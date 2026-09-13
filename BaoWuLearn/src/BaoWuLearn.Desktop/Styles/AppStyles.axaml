@@ -1,0 +1,380 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Styles.Resources>
+    <ResourceDictionary>
+      <!-- 背景层级 -->
+      <SolidColorBrush x:Key="BgBrush" Color="#0F1115" />
+      <SolidColorBrush x:Key="SidebarBrush" Color="#151821" />
+      <SolidColorBrush x:Key="PanelBrush" Color="#1B1F2A" />
+      <SolidColorBrush x:Key="PanelSoftBrush" Color="#212635" />
+
+      <!-- 描边 -->
+      <SolidColorBrush x:Key="LineBrush" Color="#262B38" />
+      <SolidColorBrush x:Key="LineSoftBrush" Color="#1F2431" />
+
+      <!-- 文字 -->
+      <SolidColorBrush x:Key="TextBrush" Color="#E6E9EF" />
+      <SolidColorBrush x:Key="TextDimBrush" Color="#9AA3B2" />
+      <SolidColorBrush x:Key="TextFaintBrush" Color="#6B7280" />
+
+      <!-- 强调色 -->
+      <SolidColorBrush x:Key="AccentBrush" Color="#2F7BF6" />
+      <SolidColorBrush x:Key="AccentHoverBrush" Color="#4A8DF7" />
+      <!-- 强调色的低饱和铺底：给"正在挂"的那一行当底色，比整块纯蓝克制 -->
+      <SolidColorBrush x:Key="AccentSoftBrush" Color="#172A47" />
+      <SolidColorBrush x:Key="AccentSoftHoverBrush" Color="#1D3255" />
+      <SolidColorBrush x:Key="SuccessBrush" Color="#22C55E" />
+      <!-- 成功色的低饱和铺底：给挂机行「成绩已过线」那个胶囊当底，
+           跟 AccentSoftBrush 同一个思路 —— 暗底上一块纯绿太扎眼 -->
+      <SolidColorBrush x:Key="SuccessSoftBrush" Color="#153021" />
+      <SolidColorBrush x:Key="WarnBrush" Color="#F59E0B" />
+      <SolidColorBrush x:Key="DangerBrush" Color="#EF4444" />
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- ══ 全局 ══ -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource BgBrush}" />
+    <Setter Property="FontFamily"
+            Value="PingFang SC, Microsoft YaHei, Segoe UI, Noto Sans CJK SC, Helvetica Neue, Arial, sans-serif" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.dim">
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.faint">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+  </Style>
+
+  <!-- ══ 卡片 / 面板 ══ -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+
+  <!--
+    数据瓷砖：卡片内部再嵌一层的小面板（学时看板的三个数字块）。
+    底色比卡片浅一档，靠描边区分层级，不用阴影。
+  -->
+  <Style Selector="Border.tile">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineSoftBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="14,12" />
+  </Style>
+
+  <!--
+    挂机操作区：挂课运行时在页面下方浮出的面板。
+    左侧一条强调色竖线做视觉锚点，与普通卡片区分开。
+  -->
+  <Style Selector="Border.console">
+    <Setter Property="Background" Value="{DynamicResource SidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="3,0,0,0" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="16,14" />
+  </Style>
+
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="{DynamicResource SidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+  <Style Selector="Border.topbar">
+    <Setter Property="Background" Value="{DynamicResource SidebarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,10" />
+  </Style>
+
+  <!-- 登录过期横幅：红底白字，一眼看到，比日志页里一行小字显眼得多 -->
+  <Style Selector="Border.expibanner">
+    <Setter Property="Background" Value="#33EF4444" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,9" />
+  </Style>
+  <Style Selector="Border.expibanner > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style Selector="Border.row">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineSoftBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+
+  <Style Selector="Border.row:pointerover">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+  </Style>
+
+  <Style Selector="Border.divider">
+    <Setter Property="Background" Value="{DynamicResource LineBrush}" />
+    <Setter Property="Height" Value="1" />
+  </Style>
+
+  <!--
+    验证码外框：鼠标悬停时只把边框点亮成强调色。
+    不要在悬停时叠加任何深色遮罩 —— 遮罩会盖住验证码图片，看起来就是「图片变黑」。
+  -->
+  <Style Selector="Border.captcha">
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Border.captcha:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <!-- ══ 按钮 ══ -->
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+  </Style>
+
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+  </Style>
+
+  <Style Selector="Button.danger">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
+
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#3A1D22" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+  </Style>
+
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+
+  <!--
+    ══ 无底热区按钮 ══
+    铺在图片/自定义内容之上的透明点击区域。
+
+    为什么需要它：上面的 `Button:pointerover /template/ ContentPresenter`
+    会把悬停背景刷成 LineBrush（深灰）。这条规则对所有 Button 生效，
+    于是透明热区一被悬停就变成一块深色遮罩，把底下的内容糊住了。
+
+    这里用 `Button.bare` 逐状态把模板里的 ContentPresenter 背景重置为透明，
+    彻底消除悬停/按下时的遮罩，同时保留 :focus 的默认焦点框（键盘可达性）。
+  -->
+  <Style Selector="Button.bare">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+
+  <Style Selector="Button.bare /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <Style Selector="Button.bare:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.bare:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <!-- 导航按钮 -->
+  <Style Selector="Button.nav">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="14,9" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+  </Style>
+
+  <Style Selector="Button.nav.active">
+    <Setter Property="Background" Value="#1E2A44" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.nav.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="#1E2A44" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+
+  <!-- ══ 输入框 ══ -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <!-- ══ 进度条 ══ -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="MinHeight" Value="6" />
+  </Style>
+
+  <!-- ══ 复选 / 下拉 ══ -->
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+
+  <Style Selector="ScrollViewer">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- ══ 状态徽标 ══ -->
+  <Style Selector="Border.badge">
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!--
+    ══ 挂机列表里"正在挂"的那一行 ══
+    用户原话：「正在挂的这个课太不显眼了，就左边一个蓝色亮条」。
+    只靠那条 3px 竖线确实得凑近看，所以整行再叠一层强调色低饱和底色，
+    标题与状态文字转强调色、加粗 —— 一眼就能定位到它在哪。
+
+    写法上走"条件类绑定"：Classes.current="{Binding IsCurrent}"，
+    样式选择器用双类 `.queuerow.current` 精确限定，不会波及其他行。
+    ★ 这两条规则必须定义在 `Border.row:pointerover` 之后：
+      Avalonia 的样式按定义顺序应用，后定义者覆盖先定义者，
+      放前面会被悬停底色盖掉（悬停时"正在挂"那一行反而变灰）。
+  -->
+  <Style Selector="Border.queuerow.current">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+
+  <Style Selector="Border.queuerow.current:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftHoverBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.queuetitle.current">
+    <Setter Property="Foreground" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.questatus.current">
+    <Setter Property="Foreground" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- 有结果的（已挂满 / 已过线）走成功色：等待=灰、成果=绿、正在挂=强调蓝，
+       一列扫过去不用读字就知道谁是哪一档。 -->
+  <Style Selector="TextBlock.questatus.success">
+    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+  <!--
+    ══ 挂机列表行的「成绩胶囊」══
+    副标题那一行改成结构化排版后，成绩单独收成一个小胶囊（`63.28/60`）。
+    背景的来龙去脉见 QueueRow.ScoreChipText 的注释：那一列放不下四个字段名，
+    折行又难看，所以字段名全部去掉、成绩改成图形元素。
+
+    过线的课（已挂满 / 已及格）走成功色低饱和胶囊，未过线走中性灰 ——
+    颜色本身就是结论，一列扫下去不用逐个读数字。
+
+    ★ `.pass` 必须定义在基础规则**之后**：Avalonia 的样式按定义顺序应用，
+      后定义者覆盖先定义者。放前面的话条件类会被基础色盖掉，
+      过线与否就长得一模一样了（同 `.queuerow.current` 那条纪律）。
+  -->
+  <Style Selector="Border.scorechip">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="Padding" Value="7,1" />
+  </Style>
+
+  <Style Selector="Border.scorechip.pass">
+    <Setter Property="Background" Value="{DynamicResource SuccessSoftBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.scorechiptext">
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.scorechiptext.pass">
+    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+  </Style>
+
+</Styles>

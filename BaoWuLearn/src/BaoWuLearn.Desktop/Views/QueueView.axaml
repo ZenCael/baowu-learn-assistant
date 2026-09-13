@@ -1,0 +1,324 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             xmlns:models="using:BaoWuLearn.Core.Models"
+             xmlns:tdg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.TreeDataGrid"
+             x:Class="BaoWuLearn.Desktop.Views.QueueView"
+             x:DataType="vm:QueueViewModel">
+
+  <!-- 树网格单元格模板（列在 QueueView.axaml.cs 里用资源键引用）。
+       TreeDataGrid 的列是代码构造的（选择器要写表达式），XAML 只负责单元格长相。
+       「选择」列用原生 CheckBoxColumn（可靠、无需自绘），这里不放模板。 -->
+  <UserControl.Resources>
+    <DataTemplate x:Key="QueueTitleCell" x:DataType="vm:MyCourseRow">
+      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2"
+            Margin="0,3" ClipToBounds="True" VerticalAlignment="Center">
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Title}"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                    Margin="6,0,0,0" VerticalAlignment="Center">
+          <Border Classes="badge" IsVisible="{Binding IsCurrent}">
+            <TextBlock Text="正在挂课" FontSize="10" Classes="dim" />
+          </Border>
+          <Border Classes="badge" IsVisible="{Binding InQueue}">
+            <TextBlock Text="已在队列" FontSize="10" Classes="dim" />
+          </Border>
+        </StackPanel>
+        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                   Text="{Binding DetailText}" FontSize="10" Classes="faint"
+                   TextTrimming="CharacterEllipsis" />
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="QueueActionCell" x:DataType="vm:MyCourseRow">
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <!-- 班级行不再需要「展开」按钮 —— 名称列左侧的原生展开箭头就是它 -->
+        <Button Content="{Binding QueueActionText}"
+                IsVisible="{Binding CanToggleQueue}"
+                FontSize="11" Padding="8,3"
+                ToolTip.Tip="直接从列表加入或移出挂机队列"
+                Command="{Binding $parent[UserControl].((vm:QueueViewModel)DataContext).ToggleQueueCommand}"
+                CommandParameter="{Binding}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <DockPanel>
+
+    <!-- ══ 挂课控制条 ══ -->
+    <Border DockPanel.Dock="Top" Classes="topbar">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+        <!-- 四个按钮的可用性全由引擎状态推导（见 QueueViewModel.ControlBarStates）：
+             空闲/已停止只有「开始挂课」能点；运行/暂停中开始挂课置灰；停止中全部置灰。 -->
+        <Button Grid.Column="0" Classes="primary" Content="开始挂课"
+                Command="{Binding StartHangCommand}" IsEnabled="{Binding CanStartHang}"
+                ToolTip.Tip="按队列顺序开始挂课（空闲或已停止时可用）" />
+        <Button Grid.Column="1" Margin="8,0,0,0" Content="{Binding PauseButtonText}"
+                Command="{Binding PauseToggleCommand}" IsEnabled="{Binding CanPause}"
+                ToolTip.Tip="暂停 / 继续当前挂课" />
+        <Button Grid.Column="2" Margin="8,0,0,0" Classes="danger" Content="停止"
+                Command="{Binding StopHangCommand}" IsEnabled="{Binding CanStop}"
+                ToolTip.Tip="停止挂课，并自动把当前进度结算给平台" />
+        <Button Grid.Column="3" Margin="8,0,0,0" Content="保存进度"
+                Command="{Binding SaveProgressCommand}" IsEnabled="{Binding CanSaveProgress}"
+                ToolTip.Tip="不等心跳周期，立刻把当前课程已挂到的进度结算给平台" />
+
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10"
+                    Margin="18,0" VerticalAlignment="Center">
+          <TextBlock Text="{Binding StateText}" FontWeight="SemiBold" />
+          <TextBlock Text="·" Classes="faint" />
+          <TextBlock Classes="dim">
+            <Run Text="已完成 " />
+            <Run Text="{Binding Counters}" />
+          </TextBlock>
+          <TextBlock Text="·" Classes="faint" />
+          <TextBlock Classes="faint">
+            <Run Text="下次心跳 " />
+            <Run Text="{Binding NextBeatText}" />
+          </TextBlock>
+        </StackPanel>
+
+        <TextBlock Grid.Column="5" Text="{Binding StatusText}" Classes="dim"
+                   VerticalAlignment="Center" Margin="0,0,12,0"
+                   TextTrimming="CharacterEllipsis" MaxWidth="380" />
+
+        <Button Grid.Column="6" Content="{Binding ConsoleHint}" Command="{Binding ToggleConsoleCommand}" />
+      </Grid>
+    </Border>
+
+    <!-- ══ 已选课程工具条 ══ -->
+    <Border DockPanel.Dock="Top" Classes="topbar">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto">
+        <Button Grid.Column="0" Content="刷新已选课程"
+                Command="{Binding RefreshAllCommand}" IsEnabled="{Binding !IsBusy}" />
+
+        <ComboBox Grid.Column="1" Margin="8,0,0,0" MinWidth="190"
+                  ItemsSource="{Binding CategoryOptions}"
+                  SelectedItem="{Binding SelectedCategory}" />
+
+        <TextBlock Grid.Column="2" Text="{Binding YearText}" Classes="dim"
+                   VerticalAlignment="Center" Margin="12,0,0,0" />
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+          <Button Content="← 上一年度" FontSize="12" Padding="10,5"
+                  Command="{Binding ShowLastYearCommand}" IsVisible="{Binding !IsLastYear}" />
+          <Button Content="本年度 →" FontSize="12" Padding="10,5"
+                  Command="{Binding ShowCurrentYearCommand}" IsVisible="{Binding IsLastYear}" />
+        </StackPanel>
+
+        <TextBlock Grid.Column="4" Text="{Binding StatusText}" Classes="faint"
+                   VerticalAlignment="Center" Margin="14,0"
+                   TextTrimming="CharacterEllipsis" />
+
+        <Button Grid.Column="5" Content="全选" FontSize="12" Padding="10,5"
+                Command="{Binding SelectAllCommand}" />
+        <Button Grid.Column="6" Margin="6,0,0,0" Content="清空选择" FontSize="12" Padding="10,5"
+                Command="{Binding ClearSelectionCommand}" />
+        <Button Grid.Column="7" Margin="6,0,0,0" Classes="primary"
+                Content="加入挂机队列" Command="{Binding AddSelectedCommand}" />
+      </Grid>
+    </Border>
+
+    <!-- ══ 挂机操作区（开始挂课后浮出，收起后挂机照常运行） ══ -->
+    <Border DockPanel.Dock="Bottom" Classes="console" Margin="16,0,16,16"
+            IsVisible="{Binding IsConsoleOpen}">
+      <Grid ColumnDefinitions="*,400" ColumnSpacing="16">
+
+        <!-- 当前在挂 -->
+        <StackPanel Grid.Column="0" Spacing="10">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="挂机操作区" Classes="h2" />
+              <Border Classes="badge">
+                <TextBlock Text="{Binding StateText}" FontSize="11" Classes="dim" />
+              </Border>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Classes="faint" FontSize="11" VerticalAlignment="Center"
+                       Text="收起面板不影响挂机，可随时切到其他页面" />
+          </Grid>
+
+          <StackPanel Spacing="3">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="当前在挂课程" Classes="label" />
+              <!-- 课件进度提示：课程共几个视频、正在播第几个（引擎没在挂课时为空串，自动藏起） -->
+              <TextBlock Grid.Column="1" Text="{Binding WareProgressText}" Classes="dim"
+                         FontSize="11" VerticalAlignment="Center" />
+            </Grid>
+            <TextBlock Text="{Binding CurrentCourse}" FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
+            <TextBlock Text="当前课件" Classes="label" />
+            <TextBlock Text="{Binding CurrentWare}" Classes="dim" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+            <Border Grid.Column="0" Classes="tile">
+              <StackPanel Spacing="2">
+                <!-- ★ 这里是**整门课**的账本（全部视频合计的已学/要求），不是当前视频 ——
+                     之前标签写成"视频时长"，用户拿它除以挂机列表里的总时长得出
+                     "课程只有 1 个视频"的误会。当前视频的时长看下面的「课件进度」。 -->
+                <TextBlock Text="课程时长（已学 / 要求）" Classes="label" FontSize="11"
+                           ToolTip.Tip="整门课程全部视频合计的已学/要求学时；当前视频的时长见下方「课件进度」" />
+                <TextBlock Text="{Binding CurrentDurationText}" FontSize="12" />
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="tile">
+              <StackPanel Spacing="2">
+                <TextBlock Text="得分" Classes="label" FontSize="11" />
+                <TextBlock Text="{Binding CurrentScoreText}" FontSize="12" />
+                <!-- 结算台账：平台是异步落库，光看分数看不出"到底结算了没有"，这行补上 -->
+                <TextBlock Text="{Binding CurrentSettleText}" FontSize="10" Classes="faint"
+                           TextWrapping="Wrap" />
+                <!-- 视频占分权重：得分 = 时长比 × 权重，各课不同（70/80 都有），
+                     不亮出来用户没法估计"还要挂多久才到分数线" -->
+                <TextBlock Text="{Binding CurrentWeightText}" FontSize="10" Classes="faint"
+                           IsVisible="{Binding CurrentWeightText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="tile">
+              <StackPanel Spacing="2">
+                <TextBlock Text="分数线" Classes="label" FontSize="11" />
+                <TextBlock Text="{Binding CurrentPassScoreText}" FontSize="12" />
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <StackPanel Spacing="5">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="课件进度（当前视频）" Classes="label"
+                         ToolTip.Tip="当前视频的播放进度；换一个视频就从头算。整门课的合计进度见上方「课程时长」与挂机列表行内进度条" />
+              <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Classes="dim" FontSize="11" />
+            </Grid>
+            <ProgressBar Value="{Binding Progress}" Maximum="1" Height="7" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- 挂机列表 -->
+        <DockPanel Grid.Column="1">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto">
+            <TextBlock Text="挂机列表" Classes="label" />
+            <!-- 「清除已合格课程」：收拾残局用 —— 只摘掉已挂满 / 已达分数线的课，
+                 还没挂完的一门不动，正在挂的那门也不动（界面上与引擎同一个判据）。
+                 没得清的时候置灰，免得点了没反应让人以为坏了。 -->
+            <Button Grid.Column="1" Content="清除已合格" FontSize="11" Padding="8,3"
+                    Margin="0,0,6,0"
+                    IsEnabled="{Binding HasPassedInQueue}"
+                    ToolTip.Tip="把已挂满 / 已达分数线的课程从队列里移除；还没挂完的、以及正在挂的那门都会保留"
+                    Command="{Binding ClearPassedCommand}" />
+            <Button Grid.Column="2" Content="清空队列" FontSize="11" Padding="8,3"
+                    ToolTip.Tip="清空整个挂机队列（含正在挂的那门）"
+                    Command="{Binding ClearQueueCommand}" />
+          </Grid>
+
+          <Border Classes="tile" Padding="0" Margin="0,6,0,0" MaxHeight="230">
+            <!-- x:Name 是给 code-behind 用的：列表要跟着"当前在挂"那一行自动滚动，
+                 用户手动拖去看别的行、停手几秒后也会自动滚回当前行（见 QueueView.axaml.cs）。 -->
+            <ScrollViewer x:Name="QueueScroll">
+              <ItemsControl x:Name="QueueList" ItemsSource="{Binding QueueItems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:QueueRow">
+                    <!-- 「正在挂」这一行整行铺强调色底 + 文字转强化色 + 行内实时进度条，
+                         不再只有左侧一条容易被忽略的亮条（样式见 AppStyles.axaml 的 .queuerow）。 -->
+                    <Border Classes="row queuerow" Classes.current="{Binding IsCurrent}" Padding="10,7">
+                      <Grid ColumnDefinitions="3,22,*,Auto,Auto" RowDefinitions="Auto,Auto">
+                        <!-- 当前在挂的行左侧点一条强调色，比整行换底色更克制 -->
+                        <Border Grid.Row="0" Grid.Column="0" Width="3" Margin="0,0,7,0" CornerRadius="2"
+                                Background="{DynamicResource AccentBrush}"
+                                IsVisible="{Binding IsCurrent}" />
+
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding IndexText}" Classes="faint"
+                                   FontSize="11" VerticalAlignment="Center" />
+
+                        <StackPanel Grid.Row="0" Grid.Column="2" Spacing="2" Margin="0,0,8,0">
+                          <TextBlock Text="{Binding Title}" FontSize="12"
+                                     Classes="queuetitle" Classes.current="{Binding IsCurrent}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <!-- 副标题：**结构化的一行**，不再是拼成一整串的文字。
+                               ★ 为什么改：原先整串「时长 37分20秒 / 59分钟 · 得分 63.28
+                                 · 分数线 60 · 视频占分 100%」要 290 多像素，这一列只有两百多，
+                                 用 CharacterEllipsis 会在"分数线 60"之后烂尾（用户反馈①）；
+                                 改成 Wrap 又折成两行、长短参差（用户反馈②：更难看）。
+                                 根因是**字段名太占地方** —— 位置固定、顺序固定，读第二眼
+                                 就知道哪个是哪个，字段名一个都不需要。
+                                 现在：左「时长」、右「占分」、最右「成绩胶囊」，
+                                 中间那列 * 负责把后两项顶到右边；宽度省近一半，稳定一行。
+                               ★ 被省掉的字段名没有丢：整行挂 ToolTip 显示 SubtitleText，
+                                 完整表述（含"得分""分数线"字样）鼠标停一下就有。 -->
+                          <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,1,0,0"
+                                ToolTip.Tip="{Binding SubtitleText}">
+                            <!-- 时长：`37分20秒 / 59分钟`，自解释，不需要字段名 -->
+                            <TextBlock Grid.Column="0" FontSize="10" Classes="faint"
+                                       Text="{Binding DurationText}" VerticalAlignment="Center" />
+
+                            <!-- 视频占分：权重没查到时整段缺席（HasWeight 而非判空字符串） -->
+                            <TextBlock Grid.Column="2" FontSize="10" Classes="faint"
+                                       Margin="0,0,6,0" VerticalAlignment="Center"
+                                       Text="{Binding WeightText}"
+                                       IsVisible="{Binding HasWeight}" />
+
+                            <!-- 成绩胶囊：过线的课（已挂满 / 已及格）走成功色，
+                                 未过线走中性灰 —— 一列扫下去不用读数字就知道谁稳了。
+                                 判定口径与状态列同源（都是 IsSuccess）。 -->
+                            <Border Grid.Column="3" Classes="scorechip"
+                                    Classes.pass="{Binding IsSuccess}"
+                                    VerticalAlignment="Center">
+                              <TextBlock FontSize="10" Classes="scorechiptext"
+                                         Classes.pass="{Binding IsSuccess}"
+                                         Text="{Binding ScoreChipText}" />
+                            </Border>
+                          </Grid>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding StatusText}" FontSize="11"
+                                   Classes="dim questatus"
+                                   Classes.current="{Binding IsCurrent}"
+                                   Classes.success="{Binding IsSuccess}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+
+                        <StackPanel Grid.Row="0" Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                          <Button Content="↑" FontSize="11" Padding="6,2"
+                                  ToolTip.Tip="上移"
+                                  Command="{Binding $parent[UserControl].((vm:QueueViewModel)DataContext).MoveUpCommand}"
+                                  CommandParameter="{Binding}" />
+                          <Button Content="✕" FontSize="11" Padding="6,2" Classes="danger"
+                                  ToolTip.Tip="移出队列"
+                                  Command="{Binding $parent[UserControl].((vm:QueueViewModel)DataContext).RemoveFromQueueCommand}"
+                                  CommandParameter="{Binding}" />
+                        </StackPanel>
+
+                        <!-- 只有正在挂的那一行才有这条 —— 但它不是「课件进度」的复制品：
+                             左侧面板那条是**当前视频**的进度（换视频就归零重来），
+                             这条是**整门课程**所有视频合计的进度，只认总账、一直往前爬。 -->
+                        <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+                                     Margin="0,6,0,0" Height="3" Minimum="0" Maximum="1"
+                                     ToolTip.Tip="整门课程的进度（全部视频合计）"
+                                     Value="{Binding $parent[UserControl].((vm:QueueViewModel)DataContext).CourseProgress}"
+                                     IsVisible="{Binding IsCurrent}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+        </DockPanel>
+
+      </Grid>
+    </Border>
+
+    <!-- ══ 我的已选课程（官方 TreeDataGrid 树形表格）══
+         旧版是「平铺 ItemsControl + └ 制表符假装层级」，展开状态一刷新就丢；
+         现在换成 HierarchicalTreeDataGridSource：合集行有原生展开箭头，
+         表头/列宽/斑马线由控件统一管理，子行是真正的树节点。 -->
+    <DockPanel Margin="16,16,16,16">
+      <TextBlock DockPanel.Dock="Top" Text="我的已选课程" Classes="label" Margin="0,0,0,8" />
+
+      <Border Classes="card" Padding="0" Margin="0,6,0,0">
+        <tdg:TreeDataGrid x:Name="CourseTree"
+                          Background="Transparent" BorderThickness="0" />
+      </Border>
+    </DockPanel>
+
+  </DockPanel>
+</UserControl>

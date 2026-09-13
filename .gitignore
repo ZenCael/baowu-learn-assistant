@@ -1,0 +1,26 @@
+# ── 操作系统 ──────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── .NET 编译缓存（500M+，绝不入库）──────────
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+
+# ── 发布产物（走 GitHub Releases，不入库）────
+BaoWuLearn/dist/
+
+# ── 本地会话笔记（WorkBuddy 工作目录元数据）───
+.workbuddy/
+
+# ── 运行日志 ──────────────────────────────
+*.log
+logs/
+
+# 本地留档（开发记录，不随仓库发布）
+docs/
+userscript/
+
+# BaoWuLearn 下的开发留档 md（功能改造/缺陷修复说明、overview 等），仅本地保存
+BaoWuLearn/*.md

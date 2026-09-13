@@ -1,0 +1,194 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             x:Class="BaoWuLearn.Desktop.Views.LoginView"
+             x:DataType="vm:LoginViewModel">
+
+  <Grid>
+    <Border Classes="card"
+            Width="380"
+            Padding="28"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+
+      <StackPanel Spacing="14">
+
+        <StackPanel Spacing="4" Margin="0,0,0,6">
+          <TextBlock Text="宝武学习助手" Classes="h1" />
+          <TextBlock Text="使用您的平台账号登录 · 全程 API 通讯"
+                     Classes="faint" FontSize="12" />
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="员工号" Classes="label" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     x:Name="UserNoBox"
+                     Text="{Binding UserNo}"
+                     Watermark="请输入员工号"
+                     IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Column="1" Margin="8,0,0,0"
+                    Content="▾"
+                    MinWidth="42"
+                    ToolTip.Tip="选择已保存的账号"
+                    Command="{Binding ToggleAccountListCommand}"
+                    IsEnabled="{Binding !IsBusy}" />
+
+            <!-- 账号下拉：展开状态由 VM 控制（IsAccountListOpen），
+                 每行自带「使用 / 删除」两个命令 —— 点行切换账号，点 ✕ 删掉该账号。
+                 StaysOpen=False 让点击面板外部时自动收起。 -->
+            <Popup Grid.Column="0" Grid.ColumnSpan="2"
+                   IsOpen="{Binding IsAccountListOpen}"
+                   PlacementTarget="{Binding #UserNoBox}"
+                   Placement="BottomEdgeAlignedLeft"
+                   VerticalOffset="4"
+                   IsLightDismissEnabled="True">
+              <Border Background="{DynamicResource PanelBrush}"
+                      BorderBrush="{DynamicResource LineBrush}"
+                      BorderThickness="1"
+                      CornerRadius="8"
+                      Padding="8"
+                      MinWidth="300">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="已保存的账号" Classes="label" Margin="4,2,0,4" />
+                  <ItemsControl ItemsSource="{Binding SavedAccounts}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:SavedAccountRow">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                          <Button Grid.Column="0"
+                                  Classes="bare"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left"
+                                  Padding="8,6"
+                                  Command="{Binding UseCommand}">
+                            <StackPanel Spacing="2">
+                              <TextBlock Text="{Binding DisplayText}" FontSize="13" />
+                              <TextBlock Text="{Binding HintText}"
+                                         FontSize="11"
+                                         Foreground="{DynamicResource TextFaintBrush}" />
+                            </StackPanel>
+                          </Button>
+                          <Button Grid.Column="1"
+                                  Classes="bare"
+                                  Content="✕"
+                                  Padding="8,6"
+                                  Margin="4,0,0,0"
+                                  FontSize="12"
+                                  ToolTip.Tip="删除该账号"
+                                  Command="{Binding DeleteCommand}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </Popup>
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="密码" Classes="label" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     Text="{Binding Password}"
+                     PasswordChar="●"
+                     RevealPassword="{Binding ShowPassword}"
+                     Watermark="请输入密码"
+                     IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Column="1" Margin="8,0,0,0"
+                    Content="显示"
+                    Command="{Binding ToggleShowPasswordCommand}"
+                    Padding="10,6"
+                    FontSize="12" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="验证码" Classes="label" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     Text="{Binding Captcha}"
+                     Watermark="输入图中字符"
+                     MaxLength="8"
+                     IsEnabled="{Binding !IsBusy}" />
+            <Border Grid.Column="1" Margin="8,0,0,0"
+                    Classes="captcha"
+                    Width="104" Height="38"
+                    Background="White"
+                    CornerRadius="6"
+                    ClipToBounds="True">
+              <Panel>
+                <Image Source="{Binding CaptchaImage}"
+                       Stretch="Uniform"
+                       IsVisible="{Binding HasCaptchaImage}" />
+                <TextBlock Text="{Binding CaptchaHint}"
+                           Foreground="#6B7280"
+                           FontSize="10"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding !HasCaptchaImage}" />
+                <!-- 覆盖式点击热区：Classes="bare" 保证悬停/按下都不会盖住验证码图片 -->
+                <Button Classes="bare"
+                        Cursor="Hand"
+                        AutomationProperties.Name="刷新验证码"
+                        Command="{Binding RefreshCaptchaCommand}"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" />
+              </Panel>
+            </Border>
+          </Grid>
+          <TextBlock Text="验证码来自平台接口原图，点击图片可刷新"
+                     Classes="faint" FontSize="11" />
+          <TextBlock Text="⚠ 该验证码为动图，此处显示第一帧；若看不清请点击刷新"
+                     Foreground="{DynamicResource WarnBrush}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding CaptchaIsAnimated}" />
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <StackPanel Orientation="Horizontal" Spacing="18">
+            <CheckBox Content="记住账户"
+                      IsChecked="{Binding RememberAccount}"
+                      IsEnabled="{Binding !IsBusy}"
+                      ToolTip.Tip="登录成功后把该账号记进员工号的下拉列表" />
+            <CheckBox Content="保存密码"
+                      IsChecked="{Binding SavePassword}"
+                      IsEnabled="{Binding !IsBusy}"
+                      ToolTip.Tip="把密码加密保存在本机，下次选中该账号自动填入" />
+          </StackPanel>
+          <TextBlock Text="密码用本机密钥加密后保存，不存明文；关闭「保存密码」会立即清除已保存的密码。"
+                     Classes="faint" FontSize="11" TextWrapping="Wrap"
+                     IsVisible="{Binding SavePassword}" />
+        </StackPanel>
+
+        <Border Background="#3A1D22"
+                BorderBrush="{DynamicResource DangerBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="10,8"
+                IsVisible="{Binding HasError}">
+          <TextBlock Text="{Binding Error}"
+                     Foreground="{DynamicResource DangerBrush}"
+                     FontSize="12"
+                     TextWrapping="Wrap" />
+        </Border>
+
+        <Button Classes="primary"
+                Content="{Binding LoginButtonText}"
+                HorizontalAlignment="Stretch"
+                Padding="0,10"
+                Margin="0,4,0,0"
+                Command="{Binding LoginCommand}"
+                IsEnabled="{Binding !IsBusy}" />
+
+        <TextBlock Text="{Binding StatusText}"
+                   Classes="faint" FontSize="12"
+                   HorizontalAlignment="Center" />
+
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

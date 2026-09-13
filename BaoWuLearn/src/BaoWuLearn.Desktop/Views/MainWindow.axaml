@@ -1,0 +1,101 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+        x:Class="BaoWuLearn.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="宝武学习助手"
+        Icon="avares://BaoWuLearn/Assets/appicon.png"
+        Width="1120" Height="740"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen">
+
+  <Grid>
+    <!-- ══ 登录层 ══ -->
+    <ContentControl Content="{Binding Login}"
+                    IsVisible="{Binding !IsLoggedIn}"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch" />
+
+    <!-- ══ 主界面 ══ -->
+    <Grid ColumnDefinitions="200,*" IsVisible="{Binding IsLoggedIn}">
+
+      <!-- 侧边导航 -->
+      <Border Grid.Column="0" Classes="sidebar">
+        <DockPanel>
+
+          <StackPanel DockPanel.Dock="Top" Margin="18,20,18,14">
+            <TextBlock Text="宝武学习助手" Classes="h2" />
+            <!-- 副标题显示版本号（publish.sh 注入），报问题时一眼看到装的是哪一版 -->
+            <TextBlock Text="{Binding VersionText}"
+                       Classes="faint" FontSize="11" Margin="0,4,0,0" />
+          </StackPanel>
+
+          <StackPanel DockPanel.Dock="Bottom" Margin="10,10,10,14">
+            <Border Classes="divider" Margin="0,0,0,12" />
+            <TextBlock Text="{Binding UserDisplay}"
+                       Classes="dim" FontSize="12"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="8,0,8,8" />
+            <Button Classes="nav" Content="退出登录" Command="{Binding LogoutCommand}" />
+          </StackPanel>
+
+          <StackPanel Margin="10,4">
+            <Button Classes="nav"
+                    Classes.active="{Binding IsDashboardPage}"
+                    Content="总览"
+                    Command="{Binding NavigateCommand}" CommandParameter="dashboard" />
+            <Button Classes="nav"
+                    Classes.active="{Binding IsCoursesPage}"
+                    Content="课程"
+                    Command="{Binding NavigateCommand}" CommandParameter="courses" />
+            <Button Classes="nav"
+                    Classes.active="{Binding IsQueuePage}"
+                    Content="学习队列"
+                    Command="{Binding NavigateCommand}" CommandParameter="queue" />
+            <Button Classes="nav"
+                    Classes.active="{Binding IsLogsPage}"
+                    Content="运行日志"
+                    Command="{Binding NavigateCommand}" CommandParameter="logs" />
+            <Button Classes="nav"
+                    Classes.active="{Binding IsSettingsPage}"
+                    Content="设置"
+                    Command="{Binding NavigateCommand}" CommandParameter="settings" />
+          </StackPanel>
+
+        </DockPanel>
+      </Border>
+
+      <!-- 内容区 -->
+      <DockPanel Grid.Column="1">
+
+        <Border DockPanel.Dock="Top" Classes="topbar">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding CurrentPageTitle}" Classes="h2" VerticalAlignment="Center" />
+            <Border Grid.Column="1" Classes="badge">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding EngineBadge}" FontSize="12" />
+              </StackPanel>
+            </Border>
+          </Grid>
+        </Border>
+
+        <!-- ══ 登录过期横幅 ══
+             平台把过期藏在 HTTP 200 响应体里，v1.0.24 之前挂机会空转几小时；
+             现在引擎自动暂停 + 这里亮红条，重新登录后自动续挂 -->
+        <Border DockPanel.Dock="Top" Classes="expibanner" IsVisible="{Binding SessionExpired}">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,12,0">
+            <TextBlock Text="⛔ 登录已过期，挂机已自动暂停，已挂进度已保留。重新登录后将自动继续挂机"
+                       TextTrimming="CharacterEllipsis" />
+            <Button Grid.Column="1" Content="重新登录"
+                    Classes="danger" Margin="12,0,0,0"
+                    Command="{Binding ReLoginAfterExpiryCommand}" />
+          </Grid>
+        </Border>
+
+        <ContentControl Content="{Binding CurrentPage}" />
+
+      </DockPanel>
+    </Grid>
+  </Grid>
+</Window>

@@ -1,0 +1,142 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             xmlns:tdg="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls.TreeDataGrid"
+             x:Class="BaoWuLearn.Desktop.Views.CoursesView"
+             x:DataType="vm:CoursesViewModel">
+
+  <!-- 树网格单元格模板（列在 CoursesView.axaml.cs 里用资源键引用）。
+       TreeDataGrid 的列是代码构造的（列选择器要写 C# 表达式），XAML 只负责单元格长相。
+       「选择」列用原生 CheckBoxColumn（可靠、无需自绘），这里不放模板。 -->
+  <UserControl.Resources>
+    <DataTemplate x:Key="CourseTitleCell" x:DataType="vm:MyCourseRow">
+      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2"
+            Margin="0,3" ClipToBounds="True" VerticalAlignment="Center">
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Title}"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <Border Grid.Row="0" Grid.Column="1" Classes="badge" Margin="6,0,0,0"
+                VerticalAlignment="Center" IsVisible="{Binding InQueue}">
+          <TextBlock Text="已入队列" FontSize="10" Classes="dim" />
+        </Border>
+        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                   Text="{Binding DetailText}" FontSize="10" Classes="faint"
+                   TextTrimming="CharacterEllipsis" />
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CourseActionCell" x:DataType="vm:MyCourseRow">
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <!-- 合集行的展开不再需要按钮 —— 名称列左侧的原生展开箭头就是它（与学习列表一致） -->
+        <Button Content="{Binding QueueActionText}"
+                IsVisible="{Binding CanToggleQueue}"
+                FontSize="11" Padding="8,3"
+                ToolTip.Tip="直接把这门课加入挂机队列；开始挂课后它会出现在平台的已选课程里"
+                Command="{Binding $parent[UserControl].((vm:CoursesViewModel)DataContext).ToggleQueueCommand}"
+                CommandParameter="{Binding}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <DockPanel>
+
+    <!-- ══ 工具条 ══ -->
+    <Border DockPanel.Dock="Top" Classes="topbar">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="学习中心" Classes="label" VerticalAlignment="Center" />
+        <!-- 学习中心：中文名 + 编码（平台的站点下拉），不必再手输 C001/C007。
+             选中即切换并重取列表；列表没拉到时兜底显示当前编码，ToolTip 说明原因。 -->
+        <ComboBox Grid.Column="1" Width="168" Margin="8,0,0,0" VerticalAlignment="Center"
+                  ItemsSource="{Binding Centers}" SelectedItem="{Binding SelectedCenter}"
+                  ToolTip.Tip="{Binding CentersHint}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Display}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Button Grid.Column="2" Margin="8,0,0,0" Classes="primary" Content="查询"
+                Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" />
+
+        <!-- 搜索：公开课程 / 学习专区两个页签走**平台 ES 全文检索**（服务端分页，命中含标题/标签/简介）；
+             专题班 / 培训班平台没有检索索引，维持本地过滤（那两类本来就只有自己加入的几条）。 -->
+        <Grid Grid.Column="3" ColumnDefinitions="Auto,Auto" Margin="12,0,0,0">
+          <TextBox Grid.Column="0" Width="180" Watermark="搜索课程…"
+                   Text="{Binding SearchText}" VerticalAlignment="Center"
+                   ToolTip.Tip="公开课程 / 学习专区：直接用平台检索（覆盖全库，命中包含标题、标签与简介，结果可正常翻页）。&#10;专题班 / 培训班：平台没有检索接口，按名称在本页已加入的班级里过滤。" />
+          <Button Grid.Column="1" Margin="4,0,0,0" Content="✕" FontSize="11" Padding="6,4"
+                  ToolTip.Tip="清空搜索"
+                  Command="{Binding ClearSearchCommand}"
+                  IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </Grid>
+
+        <TextBlock Grid.Column="4" Text="{Binding StatusText}"
+                   Classes="dim" VerticalAlignment="Center"
+                   Margin="14,0" TextTrimming="CharacterEllipsis" />
+
+        <!-- 翻页控件：平台检索是服务端分页，照常翻页；只有退回整库索引时才让位给命中统计
+             （两个控件同占第 5 格，同时可见就会重叠 —— 判据必须互斥） -->
+        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                    IsVisible="{Binding PagingVisible}">
+          <TextBlock Text="{Binding TotalText}" Classes="faint" FontSize="11"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding PageText}" Classes="faint" FontSize="11"
+                     VerticalAlignment="Center" />
+          <Button Content="上一页" FontSize="12" Padding="10,5"
+                  Command="{Binding PrevPageCommand}" IsEnabled="{Binding CanPrev}" />
+          <Button Content="下一页" FontSize="12" Padding="10,5"
+                  Command="{Binding NextPageCommand}" IsEnabled="{Binding CanNext}" />
+        </StackPanel>
+
+        <!-- 整库索引（平台检索的备胎）专用统计：只在翻页控件收起时出现，否则同格重叠 -->
+        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                    IsVisible="{Binding IsIndexSearchActive}">
+          <TextBlock Text="{Binding SearchScopeText}" FontSize="11" Classes="faint"
+                     VerticalAlignment="Center" MaxWidth="260"
+                     TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="{Binding SearchScopeText}" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0">
+          <CheckBox Content="只看未完成" IsChecked="{Binding HideFinished}" VerticalAlignment="Center" />
+          <Button Content="全选 / 反选" Command="{Binding ToggleSelectAllCommand}" />
+          <Button Content="查询勾选学时" Command="{Binding QuerySelectedScoresCommand}"
+                  IsEnabled="{Binding !IsBusy}" />
+          <Button Classes="primary" Content="加入挂机队列" Command="{Binding AddSelectedToQueueCommand}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid ColumnDefinitions="230,*">
+
+      <!-- ══ 左侧菜单（与平台菜单一致） ══ -->
+      <Border Grid.Column="0" Classes="sidebar">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="课程分类" Classes="label" Margin="16,14,16,8" />
+          <ListBox ItemsSource="{Binding Menus}"
+                   SelectedItem="{Binding SelectedMenu}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Margin="6,0,6,10">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:CourseMenu">
+                <TextBlock Text="{Binding Display}" Margin="4,4"
+                           TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <!-- ══ 列表（官方 TreeDataGrid 树形表格）══
+           旧版是「平铺 ItemsControl + └ 制表符假装层级 + 手写展开按钮」，
+           合集展开出来的子行与顶层行混在同一个列表里，列宽还得手写一遍表头对上。
+           现在与「学习队列」页同一套：HierarchicalTreeDataGridSource，
+           合集行有原生展开箭头，表头/列宽/斑马线由控件统一管理。 -->
+      <Border Grid.Column="1" Classes="card" Padding="0" Margin="16">
+        <tdg:TreeDataGrid x:Name="CourseTree"
+                          Background="Transparent" BorderThickness="0" />
+      </Border>
+
+    </Grid>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,107 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             x:Class="BaoWuLearn.Desktop.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="行为拟人化" Classes="h2" />
+          <TextBlock Text="{Binding HumanizeDescription}"
+                     Classes="dim" FontSize="12" TextWrapping="Wrap" />
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="强度档位" Classes="label" />
+            <ComboBox SelectedIndex="{Binding HumanizeLevel}"
+                      HorizontalAlignment="Left" MinWidth="240">
+              <ComboBoxItem>关闭（仅调试，心跳固定 60 秒）</ComboBoxItem>
+              <ComboBoxItem>轻度（小幅抖动）</ComboBoxItem>
+              <ComboBoxItem>标准（推荐）</ComboBoxItem>
+            </ComboBox>
+          </StackPanel>
+
+          <Border Background="{DynamicResource PanelSoftBrush}" CornerRadius="6" Padding="12">
+            <StackPanel Spacing="4">
+              <TextBlock Text="当前心跳区间" Classes="label" />
+              <TextBlock Text="{Binding HeartbeatRange}" FontWeight="SemiBold" />
+            </StackPanel>
+          </Border>
+
+          <CheckBox Content="课程之间插入随机停顿（30–120 秒）"
+                    IsChecked="{Binding RandomCourseGap}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="挂课完成策略" Classes="h2" />
+          <TextBlock Text="决定一门课挂到什么程度才算完、换下一门。改完点下方「保存设置」，对正在挂的课立即生效（下一门课开始按新策略折算）。"
+                     Classes="dim" FontSize="12" TextWrapping="Wrap" />
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="策略" Classes="label" />
+            <ComboBox SelectedIndex="{Binding CompletionPolicy}"
+                      HorizontalAlignment="Left" MinWidth="240">
+              <ComboBoxItem>挂满才跳（推荐，成绩最稳）</ComboBoxItem>
+              <ComboBoxItem>及格就跳（省时间，成绩停在及格线）</ComboBoxItem>
+            </ComboBox>
+          </StackPanel>
+
+          <Border Background="{DynamicResource PanelSoftBrush}" CornerRadius="6" Padding="12">
+            <TextBlock Text="{Binding PolicyDescription}"
+                       FontSize="12" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="账号与密码" Classes="h2" />
+          <TextBlock Text="{Binding AccountSummary}"
+                     Classes="dim" FontSize="12" TextWrapping="Wrap" />
+          <TextBlock Text="「记住账户」与「保存密码」的开关在登录页；密码用本机密钥加密后存放，不保存明文，换一台机器也解不开。"
+                     Classes="faint" FontSize="11" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Content="清除已保存的密码"
+                    Command="{Binding ClearSavedPasswordsCommand}" />
+            <TextBlock Text="{Binding AccountActionStatus}"
+                       Classes="dim" FontSize="12" VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
+          <TextBlock Text="接口自检" Classes="h2" />
+          <TextBlock Text="拉取一张验证码，验证平台网关连通性与响应结构是否发生变化。"
+                     Classes="dim" FontSize="12" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding SelfTestResult}"
+                     FontSize="12" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextBrush}" />
+          <Button Content="测试平台连通性"
+                  HorizontalAlignment="Left"
+                  Command="{Binding SelfTestCommand}"
+                  IsEnabled="{Binding !IsTesting}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="配置文件位置" Classes="label" />
+          <TextBlock Text="{Binding ConfigPath}"
+                     Classes="faint" FontSize="11" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Classes="primary" Content="保存设置" Command="{Binding SaveCommand}" />
+        <TextBlock Text="{Binding SaveStatus}"
+                   Classes="dim" FontSize="12" VerticalAlignment="Center" />
+      </StackPanel>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

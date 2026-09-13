@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             xmlns:models="using:BaoWuLearn.Desktop.Models"
+             x:Class="BaoWuLearn.Desktop.Views.LogsView"
+             x:DataType="vm:LogsViewModel">
+
+  <DockPanel>
+
+    <Border DockPanel.Dock="Top" Classes="topbar">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <TextBlock Grid.Column="0" Text="实时日志" FontWeight="SemiBold"
+                   VerticalAlignment="Center" Margin="0,0,14,0" />
+        <TextBox Grid.Column="1" Text="{Binding Filter}"
+                 Watermark="按关键字过滤…"
+                 MaxWidth="360"
+                 HorizontalAlignment="Left" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+          <Button Content="清空" Command="{Binding ClearCommand}" />
+          <Button Content="导出到文件" Command="{Binding ExportCommand}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ScrollViewer Name="LogScroller" ScrollChanged="OnLogScrollerScrollChanged">
+      <ItemsControl ItemsSource="{Binding VisibleEntries}" Margin="12,8">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="models:LogEntry">
+            <Grid ColumnDefinitions="66,34,*" Margin="4,2">
+              <TextBlock Text="{Binding Time}"
+                         Classes="faint" FontSize="12"
+                         FontFamily="Menlo, Consolas, monospace" />
+              <TextBlock Grid.Column="1" Text="{Binding LevelLabel}"
+                         Foreground="{Binding LevelBrush}"
+                         FontSize="12" FontWeight="SemiBold" />
+              <TextBlock Grid.Column="2" Text="{Binding Text}"
+                         FontSize="12" TextWrapping="Wrap" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+  </DockPanel>
+</UserControl>

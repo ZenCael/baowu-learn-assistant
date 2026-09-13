@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             x:Class="BaoWuLearn.Desktop.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="14">
+
+      <!-- ══ 学时看板 ══ -->
+      <Border Classes="card">
+        <StackPanel Spacing="16">
+
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <StackPanel Spacing="3">
+              <TextBlock Text="我的学时" Classes="h1" />
+              <TextBlock Text="{Binding HoursStatus}" Classes="faint" FontSize="11" />
+            </StackPanel>
+
+            <TextBlock Grid.Column="1" Text="{Binding YearText}" Classes="dim"
+                       VerticalAlignment="Center" Margin="0,0,10,0" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Button Content="← 上一年度" FontSize="12" Padding="10,5"
+                      Command="{Binding ShowLastYearCommand}"
+                      IsVisible="{Binding !IsLastYear}" />
+              <Button Content="本年度 →" FontSize="12" Padding="10,5"
+                      Command="{Binding ShowCurrentYearCommand}"
+                      IsVisible="{Binding IsLastYear}" />
+              <Button Classes="primary" Content="刷新学时" FontSize="12" Padding="10,5"
+                      Command="{Binding LoadHoursCommand}" IsEnabled="{Binding !IsLoadingHours}" />
+            </StackPanel>
+          </Grid>
+
+          <Border Classes="divider" />
+
+          <!-- 三个核心学时 -->
+          <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+
+            <Border Grid.Column="0" Classes="tile">
+              <StackPanel Spacing="4">
+                <TextBlock Text="总学时" Classes="label" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="{Binding TotalHoursText}" Classes="h1" FontSize="30" />
+                  <TextBlock Text="学时" Classes="faint" FontSize="12" VerticalAlignment="Bottom"
+                             Margin="0,0,0,4" />
+                </StackPanel>
+                <TextBlock Text="网络自学 + 集中培训" Classes="faint" FontSize="11" />
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="tile">
+              <StackPanel Spacing="4">
+                <TextBlock Text="网络自学学时" Classes="label" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="{Binding OnlineSelfHoursText}" Classes="h1" FontSize="30" />
+                  <TextBlock Text="学时" Classes="faint" FontSize="12" VerticalAlignment="Bottom"
+                             Margin="0,0,0,4" />
+                </StackPanel>
+                <TextBlock Text="{Binding OnlineDetailText}" Classes="faint" FontSize="11"
+                           TextWrapping="Wrap" />
+                <ProgressBar Value="{Binding OnlineRatio}" Maximum="1" Height="5" Margin="0,2,0,0" />
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Classes="tile">
+              <StackPanel Spacing="4">
+                <TextBlock Text="集中培训学时" Classes="label" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="{Binding CentralizedHoursText}" Classes="h1" FontSize="30" />
+                  <TextBlock Text="学时" Classes="faint" FontSize="12" VerticalAlignment="Bottom"
+                             Margin="0,0,0,4" />
+                </StackPanel>
+                <TextBlock Text="{Binding CentralizedDetailText}" Classes="faint" FontSize="11"
+                           TextWrapping="Wrap" />
+                <ProgressBar Value="{Binding CentralizedRatio}" Maximum="1" Height="5" Margin="0,2,0,0" />
+              </StackPanel>
+            </Border>
+
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- ══ 个人信息 ══ -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Text="个人信息" Classes="h2" />
+
+          <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="12">
+            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+              <TextBlock Text="姓名" Classes="label" />
+              <TextBlock Text="{Binding UserName}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="3">
+              <TextBlock Text="工号" Classes="label" />
+              <TextBlock Text="{Binding UserNo}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="3">
+              <TextBlock Text="所属组织" Classes="label" />
+              <TextBlock Text="{Binding OrgName}" TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding OrgName}" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
+              <TextBlock Text="岗位" Classes="label" />
+              <TextBlock Text="{Binding PostName}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Grid.Column="0" Spacing="3">
+              <TextBlock Text="累计学习时长" Classes="label" />
+              <TextBlock Text="{Binding TotalLearnTimeText}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- ══ 挂课状态 ══ -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="3">
+              <TextBlock Text="当前挂课状态" Classes="label" />
+              <TextBlock Text="{Binding EngineStateText}" Classes="h2" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Button Classes="primary" Content="开始挂课"
+                      Command="{Binding StartCommand}"
+                      IsEnabled="{Binding !IsRunning}" />
+              <Button Content="暂停 / 继续" Command="{Binding PauseCommand}" />
+              <Button Classes="danger" Content="停止" Command="{Binding StopCommand}" />
+            </StackPanel>
+          </Grid>
+
+          <Border Classes="divider" />
+
+          <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="14">
+            <StackPanel Grid.Column="0" Spacing="3">
+              <TextBlock Text="正在学习" Classes="label" />
+              <TextBlock Text="{Binding CurrentCourse}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="3">
+              <TextBlock Text="当前课件" Classes="label" />
+              <TextBlock Text="{Binding CurrentWare}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Spacing="3" MinWidth="90">
+              <TextBlock Text="队列完成" Classes="label" />
+              <TextBlock Text="{Binding QueueSummary}" />
+            </StackPanel>
+          </Grid>
+
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="课件进度" Classes="label" />
+              <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Classes="dim" FontSize="12" />
+            </Grid>
+            <ProgressBar Value="{Binding Progress}" Maximum="1" Height="8" />
+          </StackPanel>
+
+        </StackPanel>
+      </Border>
+
+      <!-- ══ 说明 ══ -->
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="关于这个工具" Classes="h2" />
+          <TextBlock Classes="dim" TextWrapping="Wrap" FontSize="12"
+                     Text="本客户端不加载、不显示学习平台的任何页面，与平台之间只有 HTTP 接口通讯。验证码取自平台接口原图，由使用者本人识别输入；所有操作限定在本人账号、本人学习任务范围内。" />
+          <TextBlock Classes="faint" TextWrapping="Wrap" FontSize="11"
+                     Text="学时按真实流逝时间上报，并叠加了心跳抖动、随机暂停等拟人化处理，以降低被风控判定为机械行为的概率。平台若上线新的行为模型，仍可能触发异常标记，请自行评估风险。" />
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
