@@ -41,6 +41,15 @@ public partial class SettingsViewModel : ViewModelBase
     /// <summary>保存设置的即时反馈：成功与失败都写这里，避免点了按钮毫无反应。</summary>
     [ObservableProperty] private string _saveStatus = "";
 
+    /// <summary>是否启用自动检查更新（保存后下次启动生效；本会话内已装的定时器不动）。</summary>
+    [ObservableProperty] private bool _updateChecksEnabled = true;
+
+    /// <summary>镜像前缀列表（一行一个，保存生效）。空 = 只走直连与清单下发的推荐列表。</summary>
+    [ObservableProperty] private string _updateMirrorsText = "";
+
+    /// <summary>更新检查的即时结论（含手动「立即检查」的结果）。</summary>
+    [ObservableProperty] private string _updateCheckStatus = "尚未检查";
+
     /// <summary>供主窗口启动时读取的当前设置快照。</summary>
     public AppSettings CurrentSettings => _current;
 
@@ -79,18 +88,25 @@ public partial class SettingsViewModel : ViewModelBase
     public string SkinDisplayName =>
         ThemeService.Skins.FirstOrDefault(s => s.Id == SkinId)?.DisplayName ?? SkinId;
 
+    /// <summary>「立即检查更新」委托，由主窗口注入（检查逻辑与定时器都住在主窗口那边）。</summary>
+    private readonly Func<Task<string>>? _checkUpdate;
+
     public SettingsViewModel(
         SettingsService settings,
         AccountStore accounts,
         AuthService auth,
-        Action<string> log)
+        Action<string> log,
+        Func<Task<string>>? checkUpdate = null)
     {
         _settings = settings;
         _accounts = accounts;
         _auth = auth;
         _log = log;
+        _checkUpdate = checkUpdate;
         _current = settings.Load();
         ConfigPath = settings.ConfigPath;
+        UpdateChecksEnabled = _current.UpdateChecksEnabled;
+        UpdateMirrorsText = string.Join("\n", _current.UpdateMirrors);
 
         _humanizeLevel = _current.HumanizeLevel;
         _randomCourseGap = _current.RandomCourseGap;
@@ -186,6 +202,12 @@ public partial class SettingsViewModel : ViewModelBase
         _current.CompletionPolicy = CompletionPolicy;
         _current.SkinId = ThemeService.NormalizeSkinId(SkinId);
         _current.UiDensity = ThemeService.NormalizeDensity(UiDensity);
+        _current.UpdateChecksEnabled = UpdateChecksEnabled;
+        _current.UpdateMirrors = UpdateMirrorsText
+            .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(l => l.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                        && !l.Contains("github.com", StringComparison.OrdinalIgnoreCase))
+            .ToList(); // 手动剔除混进来的直连地址——链首本来就有，混进来只会重复请求
 
         try
         {
@@ -226,6 +248,25 @@ public partial class SettingsViewModel : ViewModelBase
         finally
         {
             IsTesting = false;
+        }
+    }
+
+    /// <summary>
+    /// 立即检查一次更新（走主窗口的更新通道：端点链降级 + 验签都在那边）。
+    /// 注意镜像列表改动要先点「保存设置」才会被这次检查用上。
+    /// </summary>
+    [RelayCommand]
+    private async Task CheckUpdateNowAsync()
+    {
+        if (_checkUpdate is null) { UpdateCheckStatus = "更新通道不可用"; return; }
+        UpdateCheckStatus = "正在检查…";
+        try
+        {
+            UpdateCheckStatus = await _checkUpdate();
+        }
+        catch (Exception ex)
+        {
+            UpdateCheckStatus = "检查异常：" + ex.Message;
         }
     }
 }

@@ -93,6 +93,25 @@
           </Grid>
         </Border>
 
+        <!-- ══ 新版本横幅 ══
+             检查是后台静默的，只有拿到「验过签的新清单」才亮这里；
+             绝不自动安装 —— 挂机中覆盖自己会把用户正在跑的队列入坑，
+             按钮只在引擎空闲时装，运行中点了只会看到提示 -->
+        <Border DockPanel.Dock="Top" Classes="updatebanner" IsVisible="{Binding UpdateAvailable}">
+          <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,0,12,0">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding UpdateInfoText}" />
+              <TextBlock Text="{Binding UpdateBusyText}" FontSize="11" IsVisible="{Binding UpdateBusy}" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="立即更新"
+                    Classes="primary" Margin="12,0,0,0"
+                    IsEnabled="{Binding !UpdateBusy}"
+                    Command="{Binding InstallUpdateCommand}" />
+            <Button Grid.Column="2" Content="稍后再说" Margin="8,0,0,0"
+                    Command="{Binding DismissUpdateCommand}" />
+          </Grid>
+        </Border>
+
         <ContentControl Content="{Binding CurrentPage}" />
 
       </DockPanel>

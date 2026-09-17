@@ -3,10 +3,13 @@
 # 宝武学习助手 · 双平台发布脚本
 #
 #   ./publish.sh win      → Windows 自包含单文件 exe
-#   ./publish.sh mac      → macOS .app + .dmg
-#   ./publish.sh all      → 两个都出（在 macOS 上可交叉编译 Windows 包）
+#   ./publish.sh mac      → macOS .app + .dmg + .zip（zip 是自动更新通道用）
+#   ./publish.sh update   → 只生成签名更新清单 update.json + update.sig
+#   ./publish.sh all      → 以上全套（win + mac + 清单）
 #   ./publish.sh run      → 本地调试运行
 #   ./publish.sh clean    → 清空 dist 产物
+# 清单签名需要 build/keys/update-ed25519.pem（私钥，gitignore 挡住，绝不入库）
+# 与一把支持 ed25519 的 OpenSSL 3（脚本自动探测 brew 路径）。
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -15,7 +18,22 @@ PROJ="$ROOT/src/BaoWuLearn.Desktop/BaoWuLearn.Desktop.csproj"
 OUT="$ROOT/dist"
 APP_NAME="宝武学习助手"
 EXE_NAME="BaoWuLearn"
-VERSION="1.0.40"
+VERSION="1.0.41"
+
+# 更新清单的签名工具：macOS 系统 openssl 是 LibreSSL（不支持 ed25519 rawin），
+# 必须找 OpenSSL 3（Homebrew 或 PATH 里可用的那份）。
+find_openssl3() {
+  local cand
+  for cand in /opt/homebrew/opt/openssl@3/bin/openssl \
+              /usr/local/opt/openssl@3/bin/openssl \
+              "$(command -v openssl 2>/dev/null || true)"; do
+    [ -n "$cand" ] && [ -x "$cand" ] || continue
+    if "$cand" pkeyutl -help 2>&1 | grep -q -- '-rawin'; then
+      echo "$cand"; return 0
+    fi
+  done
+  return 1
+}
 
 DOTNET="${DOTNET:-dotnet}"
 if ! command -v "$DOTNET" >/dev/null 2>&1 && [ -x "$HOME/.dotnet/dotnet" ]; then
@@ -116,9 +134,72 @@ publish_mac() {
     echo "   .app 已就绪，可直接使用；需要 dmg 时在本地终端重跑：./build/publish.sh mac"
   fi
 
+  # ★ 交付面板只认文件不认目录，且自动更新的 mac 通道走 zip：
+  #   这里直接产出，不留给"记得手动 ditto"这种老坑。
+  local zip="$OUT/$APP_NAME-macOS.zip"
+  rm -f "$zip" 2>/dev/null || true
+  echo "▶ 打包 zip（自动更新用）…"
+  ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+  echo "✓ 产物：$zip"
+  ls -lh "$zip"
+
   echo
   echo "ℹ 首次打开若被 Gatekeeper 拦截，执行："
   echo "    xattr -dr com.apple.quarantine \"$app\""
+}
+
+gen_update_manifest() {
+  echo "▶ 生成更新清单 update.json + update.sig…"
+  local key="$ROOT/build/keys/update-ed25519.pem"
+  if [ ! -f "$key" ]; then
+    echo "✖ 缺少发布私钥 $key —— 跳过清单生成。"
+    echo "  首次发布请生成：openssl genpkey -algorithm ed25519 -out $key"
+    echo "  并把公钥同步进 Ed25519Verifier.PublicKeyHex（私钥绝不入库）。"
+    exit 1
+  fi
+  local os3
+  if ! os3="$(find_openssl3)"; then
+    echo "✖ 找不到支持 ed25519 的 OpenSSL 3（brew install openssl@3）"
+    exit 1
+  fi
+
+  local exe="$OUT/$APP_NAME.exe"
+  local zip="$OUT/$APP_NAME-macOS.zip"
+  [ -f "$exe" ] || { echo "✖ 缺 Windows 产物 $exe"; exit 1; }
+  [ -f "$zip" ] || { echo "✖ 缺 macOS 产物 $zip"; exit 1; }
+
+  local sha_win sha_mac n_win n_mac pubdate notes
+  sha_win=$(shasum -a 256 "$exe" | cut -d' ' -f1)
+  sha_mac=$(shasum -a 256 "$zip" | cut -d' ' -f1)
+  n_win=$(stat -f%z "$exe" 2>/dev/null || stat -c%s "$exe")
+  n_mac=$(stat -f%z "$zip" 2>/dev/null || stat -c%s "$zip")
+  pubdate=$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\([+-][0-9][0-9]\)\([0-9][0-9]\)$/\1:\2/')
+  notes="${UPDATE_NOTES:-常规更新}"
+
+  # 清单里的 file 名 = Release 页的 ASCII 资产名（GitHub API 会剥掉中文名）
+  local manifest="$OUT/update.json"
+  printf '%s' "{\"schema\":1,\"version\":\"$VERSION\",\"pubDate\":\"$pubdate\",\"notes\":\"$notes\",\"assets\":{\"win-x64\":{\"file\":\"BaoWuLearn-$VERSION-win-x64.exe\",\"sha256\":\"$sha_win\",\"size\":$n_win},\"macos-arm64\":{\"file\":\"BaoWuLearn-$VERSION-macos-arm64.zip\",\"sha256\":\"$sha_mac\",\"size\":$n_mac}},\"mirrors\":[\"https://gh-proxy.com/\",\"https://ghfast.top/\"]}" > "$manifest"
+
+  "$os3" pkeyutl -sign -inkey "$key" -rawin -in "$manifest" \
+    | xxd -p | tr -d '\n' | tr 'A-F' 'a-f' > "$OUT/update.sig"
+  # 长度自证：ed25519 签名必须恰好 128 个 hex 字符（64 字节）
+  if [ "$(wc -c < "$OUT/update.sig" | tr -d ' ')" != "128" ]; then
+    echo "✖ update.sig 长度异常（$(wc -c < "$OUT/update.sig" | tr -d ' ') 字符，应为 128）"
+    exit 1
+  fi
+
+  # 自证：签完立刻用公钥回环验一次，坏钥/坏工具当场暴露，不等客户端用户去踩
+  if "$os3" pkeyutl -verify -pubin \
+        -inkey "$ROOT/build/keys/update-ed25519.pub.pem" -rawin -in "$manifest" \
+        -sigfile <(xxd -p -r < "$OUT/update.sig") >/dev/null 2>&1; then
+    echo "✓ 本地验签回环通过"
+  else
+    echo "✖ 本地验签回环失败 —— 私钥与内嵌公钥不匹配，或 openssl 行为异常。不要发布这份清单。"
+    exit 1
+  fi
+
+  echo "✓ 清单：$manifest"
+  echo "✓ 签名：$OUT/update.sig ($(cat "$OUT/update.sig" | wc -c | tr -d ' ') hex 字符)"
 }
 
 clean_dist() {
@@ -131,8 +212,9 @@ clean_dist() {
 case "${1:-all}" in
   win) publish_win ;;
   mac) publish_mac ;;
-  all) publish_win; publish_mac ;;
+  update) gen_update_manifest ;;
+  all) publish_win; publish_mac; gen_update_manifest ;;
   run) "$DOTNET" run --project "$PROJ" ;;
   clean) clean_dist ;;
-  *) echo "用法：$0 {win|mac|all|run|clean}"; exit 1 ;;
+  *) echo "用法：$0 {win|mac|update|all|run|clean}"; exit 1 ;;
 esac

@@ -27,6 +27,21 @@ public sealed class AppSettings
 
     /// <summary>界面密度：0=舒适，1=紧凑（默认紧凑）。</summary>
     public int UiDensity { get; set; } = ThemeService.DefaultUiDensity;
+
+    /// <summary>是否启用自动检查更新（启动后与每 24 小时各一次；只下载不自动安装）。</summary>
+    public bool UpdateChecksEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 更新镜像前缀（GitHub 直连失败时按顺序兜底，语义是「前缀 + 直连 URL」）。
+    /// 空列表 = 只走直连 + 清单下发的推荐列表。
+    /// </summary>
+    public List<string> UpdateMirrors { get; set; } = [];
+
+    /// <summary>
+    /// 见过的最新清单发布时间（防降级：签名旧清单原样重放也躲不过这条）。
+    /// 存 ISO 字符串，避免 JSON 数字/时间表示分歧。
+    /// </summary>
+    public string? LastUpdatePubDate { get; set; }
 }
 
 /// <summary>设置读写（存放在用户配置目录，双平台一致）。</summary>

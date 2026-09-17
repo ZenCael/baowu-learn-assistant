@@ -48,7 +48,7 @@ public partial class CoursesViewModel : ViewModelBase
     // ── 学习中心下拉 ──────────────────────────────────────
     //
     // 原先这里是个手输编码的输入框（C001 / C007 这种），能用但很难用：
-    // 用户记得住"宝信软件"，记不住它是 C007。平台自己有站点下拉
+    // 用户记得住站点的中文名，记不住中心编码 C007。平台自己有站点下拉
     // （selectCurrentStuHomeCourseAuthCenterList），中文名与编码都给了，照抄过来。
 
     /// <summary>可进入的学习中心（登录预热时拉取，按平台 sort 升序）。</summary>

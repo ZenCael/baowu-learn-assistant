@@ -99,6 +99,19 @@
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
 
+  <!-- 新版本横幅：中性提示，跟红色的过期横幅区分开（四套皮肤都有这两个笔刷） -->
+  <Style Selector="Border.updatebanner">
+    <Setter Property="Background" Value="{DynamicResource PanelSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="16,9" />
+  </Style>
+  <Style Selector="Border.updatebanner > Grid > StackPanel > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
   <Style Selector="Border.row">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="{DynamicResource LineSoftBrush}" />

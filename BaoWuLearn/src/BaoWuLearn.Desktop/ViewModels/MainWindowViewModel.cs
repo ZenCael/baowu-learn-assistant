@@ -147,7 +147,9 @@ public partial class MainWindowViewModel : ViewModelBase
         Dashboard = new DashboardViewModel(_engine, _userCenter, text => Logs.AppendAuto(text));
         Queue = new QueueViewModel(_engine, _courses, _userCenter, text => Logs.AppendAuto(text));
         Courses = new CoursesViewModel(_courses, _userCenter, _engine, Notify);
-        Settings = new SettingsViewModel(_settings, _accounts, _auth, text => Logs.AppendAuto(text));
+        Settings = new SettingsViewModel(
+            _settings, _accounts, _auth, text => Logs.AppendAuto(text),
+            checkUpdate: () => RunUpdateCheckAsync(manual: true));
 
         _engine.Snapshot += OnEngineSnapshot;
         _engine.QueueChanged += OnQueueChanged;
@@ -160,6 +162,9 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentPage = Dashboard;
         Logs.Append($"宝武学习助手 {VersionText} 已启动（纯 API 模式，不加载平台页面）", LogLevel.Success);
         _ = Login.RefreshCaptchaAsync();
+
+        // ── 自动更新（v1.0.41）─────────────────────────────
+        InitUpdateChannel();
     }
 
     /// <summary>

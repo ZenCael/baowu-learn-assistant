@@ -1994,7 +1994,7 @@ public static class SelfTest
                 var centers = new List<CenterOption>
                 {
                     new() { CenterCode = "C001", CenterName = "集团站点", Sort = 1 },
-                    new() { CenterCode = "C007", CenterName = "宝信软件", Sort = 12 },
+                    new() { CenterCode = "C007", CenterName = "示例中心", Sort = 12 },
                 };
                 var keepCurrent = ReferenceEquals(CoursesViewModel.PickDefaultCenter(centers, "C007"), centers[1]);
                 var fallbackFirst = ReferenceEquals(CoursesViewModel.PickDefaultCenter(centers, "ZZZZ"), centers[0]);
@@ -2177,6 +2177,111 @@ public static class SelfTest
             fail++;
             W($"  FAIL → {ex.GetType().Name}: {ex.Message}");
         }
+        // ── 更新通道（v1.0.41）：验签引擎 / 真实发布公钥 / 清单 / 端点链 / 换装脚本 ──
+        W("─── 更新通道自检 ───");
+
+        // (1) 验签器本身用 RFC 8032 官方测试向量（7.1 节 TEST 1）验一次。
+        //     真实清单只有一条路径进验签器，官方向量保证这条路径的编码处理
+        //     （hex 解析、消息字节、签名长度校验）本身没错。
+        {
+            var rfcPub = Convert.FromHexString(
+                "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+            var rfcSig = Convert.FromHexString(
+                "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490" +
+                "1555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+            var ok = BaoWuLearn.Core.Update.Ed25519Verifier.Verify(rfcPub, [], rfcSig)
+                     && !BaoWuLearn.Core.Update.Ed25519Verifier.Verify(rfcPub, [42], rfcSig);
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 验签引擎（RFC 8032 官方向量，含拒篡改）");
+        }
+
+        // (2) 真实发布公钥端到端：固定样本清单 + publish 私钥产出的 detached 签名。
+        //     样本字节必须与签名时一字不差（换发布钥后需同步更新本段两个常量）。
+        {
+            const string sampleJson =
+                """{"schema":1,"version":"9.9.9","pubDate":"2026-09-01T00:00:00+08:00","notes":"自检样本","assets":{"win-x64":{"file":"x.exe","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1}},"mirrors":["https://example-mirror/"]}""";
+            const string sampleSig =
+                "d4a277998c31d6d88ec1555ac21f69a843164590c2874f359fd8c124bc6e3427" +
+                "bbe190ffcd18995d72bda00c73901c7649e2937eb72a49116c7cdf845f502903";
+            var bytes = Encoding.UTF8.GetBytes(sampleJson);
+            var ok = BaoWuLearn.Core.Update.Ed25519Verifier.VerifyWithReleaseKey(bytes, sampleSig)
+                     // 篡改版本号一个字符就必须拒
+                     && !BaoWuLearn.Core.Update.Ed25519Verifier.VerifyWithReleaseKey(
+                         Encoding.UTF8.GetBytes(sampleJson.Replace("9.9.9", "9.9.8")), sampleSig)
+                     // 垃圾签名（非 hex / 长度不对）必须安静地拒，不能抛
+                     && !BaoWuLearn.Core.Update.Ed25519Verifier.VerifyWithReleaseKey(bytes, "zz");
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 发布公钥端到端（样本通过 + 篡改拒 + 垃圾拒）");
+        }
+
+        // (3) 清单解析 / 版本比较 / pubDate 防回滚 / 端点链构造
+        {
+            const string sampleJson =
+                """{"schema":1,"version":"9.9.9","pubDate":"2026-09-01T00:00:00+08:00","notes":"自检样本","assets":{"win-x64":{"file":"x.exe","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1}},"mirrors":["https://example-mirror/"]}""";
+            var ok = true;
+            try
+            {
+                var m = BaoWuLearn.Core.Update.UpdateManifestParser.Parse(
+                    Encoding.UTF8.GetBytes(sampleJson));
+                ok &= m.Version == "9.9.9" && m.Schema == 1 && m.Mirrors.Count == 1;
+                if (!m.Assets.TryGetValue("win-x64", out var asset))
+                {
+                    W($"  ✖ 清单自检：assets 数={m.Assets.Count}，JSON 长={Encoding.UTF8.GetByteCount(sampleJson)}");
+                }
+                ok &= asset?.FileName == "x.exe";
+                ok &= BaoWuLearn.Core.Update.UpdateManifestParser.IsNewer(m.Version, "1.0.40");
+                ok &= !BaoWuLearn.Core.Update.UpdateManifestParser.IsNewer("1.9.0", "1.10.0"); // 语义比较不是字符串比较
+                ok &= !BaoWuLearn.Core.Update.UpdateManifestParser.IsNewer("1.0.40", "1.0.40");
+                var pd = m.PubDate;
+                ok &= BaoWuLearn.Core.Update.UpdateManifestParser.PubDateAccepts(pd, pd);
+                ok &= !BaoWuLearn.Core.Update.UpdateManifestParser.PubDateAccepts(pd, pd.AddDays(1));
+                var chain = BaoWuLearn.Core.Update.UpdateManifestParser.BuildEndpointChain(
+                    "https://github.com/o/r/releases/download/latest/update.json",
+                    ["https://m1", "bad-entry", "https://m1/", ""]);
+                ok &= chain.Count == 2; // 直连 + m1（非法剔除、重复合并、自动补斜杠）
+                ok &= chain[0].StartsWith("https://github.com", StringComparison.Ordinal);
+                ok &= chain[1] == "https://m1/https://github.com/o/r/releases/download/latest/update.json";
+                // 缺 schema 的 JSON 必须报 UpdateException 而不是崩
+                try
+                {
+                    BaoWuLearn.Core.Update.UpdateManifestParser.Parse("{}"u8.ToArray());
+                    ok = false;
+                }
+                catch (BaoWuLearn.Core.Update.UpdateException) { /* 正确姿势 */ }
+            }
+            catch (Exception ex)
+            {
+                ok = false;
+                W($"  ✖ 清单自检抛异常：{ex.GetType().Name}: {ex.Message}");
+            }
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 清单解析/版本比较/防回滚/端点链");
+        }
+
+        // (4) 两平台换装脚本的形态断言（不真实执行——那是砸自己 .app 的事）
+        {
+            var ok = true;
+            var bat = BaoWuLearn.Core.Update.UpdateService.BuildWindowsSwapScript(
+                4321, @"C:\apps\宝武学习助手.exe", @"C:\apps\宝武学习助手.exe.new", @"C:\temp\bw.log");
+            ok &= bat.Contains("Get-Process -Id 4321");            // 等主进程退出
+            ok &= bat.Contains("'.exe'.bak") || bat.Contains(".bak"); // 旧版留备份
+            ok &= bat.Contains("Start-Process");                   // 装完拉起新版
+            ok &= bat.Contains("swap-fail-rolledback");            // 失败回滚路径存在
+            ok &= bat.Contains("del \"%~f0\"");                    // 脚本自删
+
+            var sh = BaoWuLearn.Core.Update.UpdateService.BuildMacSwapScript(
+                4321, "/Applications/宝武学习助手.app", "/tmp/st/宝武学习助手.app",
+                "/Applications/宝武学习助手.app.old", "/tmp/bw.log");
+            ok &= sh.Contains("kill -0 4321");                     // 等主进程退出
+            ok &= sh.IndexOf("app.old\"", StringComparison.Ordinal)
+                < sh.IndexOf("open ", StringComparison.Ordinal);   // 先挪旧再拉起
+            ok &= sh.Contains("swap-fail-rolledback");             // 失败回滚路径存在
+            ok &= sh.Contains("rm -f \"$0\"");                     // 脚本自删
+            ok &= sh.Contains("quarantine");                       // 新版免 Gatekeeper 拦截
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 换装脚本（win bat / mac sh 关键步骤齐全）");
+        }
         W("");
 
         // 回到总览，避免自检结束时停在别的页面
@@ -2185,7 +2290,7 @@ public static class SelfTest
         W("──────────────────────────────────────────");
         W($"总计：通过 {pass} 项，失败 {fail} 项");
         W(fail == 0
-            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度均正常。"
+            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度、更新通道均正常。"
             : ">>> 存在失败项，请把本文件内容发回以便排查。");
         W("==========================================");
 
