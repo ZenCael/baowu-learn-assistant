@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <SolidColorBrush x:Key="BgBrush" Color="#F4F6F9" />
+  <SolidColorBrush x:Key="SidebarBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="PanelSoftBrush" Color="#EEF2F7" />
+
+  <SolidColorBrush x:Key="LineBrush" Color="#D7DEE8" />
+  <SolidColorBrush x:Key="LineSoftBrush" Color="#E6EBF2" />
+
+  <SolidColorBrush x:Key="TextBrush" Color="#1A2332" />
+  <SolidColorBrush x:Key="TextDimBrush" Color="#5B6778" />
+  <SolidColorBrush x:Key="TextFaintBrush" Color="#6B7686" />
+
+  <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
+  <SolidColorBrush x:Key="AccentHoverBrush" Color="#1D4ED8" />
+  <SolidColorBrush x:Key="AccentSoftBrush" Color="#DBEAFE" />
+  <SolidColorBrush x:Key="AccentSoftHoverBrush" Color="#BFDBFE" />
+
+  <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
+  <SolidColorBrush x:Key="SuccessSoftBrush" Color="#DCFCE7" />
+  <SolidColorBrush x:Key="WarnBrush" Color="#D97706" />
+  <SolidColorBrush x:Key="DangerBrush" Color="#DC2626" />
+
+  <SolidColorBrush x:Key="DangerSoftBrush" Color="#FEE2E2" />
+  <SolidColorBrush x:Key="NavActiveBrush" Color="#E8F0FE" />
+  <SolidColorBrush x:Key="NavActiveTextBrush" Color="#1D4ED8" />
+  <SolidColorBrush x:Key="DangerBannerBrush" Color="#33DC2626" />
+  <SolidColorBrush x:Key="CaptchaSurfaceBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="PrimaryOnAccentBrush" Color="#FFFFFF" />
+
+</ResourceDictionary>

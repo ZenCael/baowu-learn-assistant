@@ -27,6 +27,9 @@ public partial class App : Application
             var viewModel = new MainWindowViewModel();
             CrashGuard.Reported += viewModel.ReportCrash;
 
+            // 皮肤与密度必须在主窗口创建前落地，否则首帧会闪一下默认深空蓝/紧凑资源
+            ThemeService.Apply(viewModel.CurrentSettings);
+
             desktop.MainWindow = new MainWindow { DataContext = viewModel };
 
             // 只有"没经过窗口关闭流程"的退出才会走到这里（Cmd+Q、自检结束等）。

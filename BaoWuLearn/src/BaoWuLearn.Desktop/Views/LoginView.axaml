@@ -11,9 +11,9 @@
             HorizontalAlignment="Center"
             VerticalAlignment="Center">
 
-      <StackPanel Spacing="14">
+      <StackPanel Spacing="10">
 
-        <StackPanel Spacing="4" Margin="0,0,0,6">
+        <StackPanel Spacing="3" Margin="0,0,0,4">
           <TextBlock Text="宝武学习助手" Classes="h1" />
           <TextBlock Text="使用您的平台账号登录 · 全程 API 通讯"
                      Classes="faint" FontSize="12" />
@@ -114,7 +114,6 @@
             <Border Grid.Column="1" Margin="8,0,0,0"
                     Classes="captcha"
                     Width="104" Height="38"
-                    Background="White"
                     CornerRadius="6"
                     ClipToBounds="True">
               <Panel>
@@ -122,7 +121,7 @@
                        Stretch="Uniform"
                        IsVisible="{Binding HasCaptchaImage}" />
                 <TextBlock Text="{Binding CaptchaHint}"
-                           Foreground="#6B7280"
+                           Foreground="{DynamicResource TextFaintBrush}"
                            FontSize="10"
                            TextAlignment="Center"
                            TextWrapping="Wrap"
@@ -164,7 +163,7 @@
                      IsVisible="{Binding SavePassword}" />
         </StackPanel>
 
-        <Border Background="#3A1D22"
+        <Border Background="{DynamicResource DangerSoftBrush}"
                 BorderBrush="{DynamicResource DangerBrush}"
                 BorderThickness="1"
                 CornerRadius="6"

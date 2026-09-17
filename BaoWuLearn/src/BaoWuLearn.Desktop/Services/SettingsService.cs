@@ -21,6 +21,12 @@ public sealed class AppSettings
 
     /// <summary>挂课完成策略：0 = 挂满才跳（默认），1 = 及格就跳。</summary>
     public int CompletionPolicy { get; set; }
+
+    /// <summary>界面皮肤 Id（见 <see cref="ThemeService.Skins"/>）。未知值回落深空蓝。</summary>
+    public string SkinId { get; set; } = ThemeService.DefaultSkinId;
+
+    /// <summary>界面密度：0=舒适，1=紧凑（默认紧凑）。</summary>
+    public int UiDensity { get; set; } = ThemeService.DefaultUiDensity;
 }
 
 /// <summary>设置读写（存放在用户配置目录，双平台一致）。</summary>

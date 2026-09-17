@@ -8,6 +8,27 @@
     <local:ViewLocator />
   </Application.DataTemplates>
 
+  <!-- 设计期与启动早期的密度默认值（紧凑）。皮肤画刷由 ThemeService 在启动时合并。
+       这里不预放皮肤字典，避免与 ThemeService 重复合并同一套资源。 -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <Thickness x:Key="PageMargin">12</Thickness>
+      <Thickness x:Key="CardPadding">10,8</Thickness>
+      <Thickness x:Key="TilePadding">10,8</Thickness>
+      <Thickness x:Key="TopbarPadding">12,7</Thickness>
+      <Thickness x:Key="RowPadding">8,5</Thickness>
+      <Thickness x:Key="ButtonPadding">10,5</Thickness>
+      <Thickness x:Key="NavButtonPadding">12,7</Thickness>
+      <Thickness x:Key="ConsolePadding">12,10</Thickness>
+      <Thickness x:Key="ConsoleMargin">12,0,12,12</Thickness>
+      <x:Double x:Key="SidebarWidth">176</x:Double>
+      <x:Double x:Key="CourseSidebarWidth">196</x:Double>
+      <x:Double x:Key="SpacePage">8</x:Double>
+      <x:Double x:Key="SpaceSection">8</x:Double>
+      <x:Double x:Key="HeroNumberSize">26</x:Double>
+    </ResourceDictionary>
+  </Application.Resources>
+
   <Application.Styles>
     <FluentTheme />
     <!-- TreeDataGrid 控件的主题样式（否则列头/单元格无模板，整棵树是空白的） -->

@@ -1,11 +1,47 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             xmlns:services="using:BaoWuLearn.Desktop.Services"
              x:Class="BaoWuLearn.Desktop.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
   <ScrollViewer>
-    <StackPanel Margin="20" Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+    <StackPanel Margin="{DynamicResource PageMargin}" Spacing="{DynamicResource SpacePage}" MaxWidth="760" HorizontalAlignment="Left">
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Text="外观" Classes="h2" />
+          <TextBlock Text="换皮肤会立刻生效；点「保存设置」写入本机，下次启动自动恢复。"
+                     Classes="dim" FontSize="12" TextWrapping="Wrap" />
+
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+            <StackPanel Spacing="6">
+              <TextBlock Text="皮肤" Classes="label" />
+              <ComboBox ItemsSource="{Binding AvailableSkins}"
+                        SelectedItem="{Binding SelectedSkin}"
+                        MinWidth="200" HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="services:SkinOption">
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Spacing="6">
+              <TextBlock Text="界面密度" Classes="label" />
+              <ComboBox SelectedIndex="{Binding UiDensity}"
+                        MinWidth="200" HorizontalAlignment="Stretch">
+                <ComboBoxItem>舒适（更松）</ComboBoxItem>
+                <ComboBoxItem>紧凑（推荐）</ComboBoxItem>
+              </ComboBox>
+            </StackPanel>
+          </Grid>
+
+          <TextBlock Text="紧凑：页边距、卡片内边距与按钮整体收紧，1120×740 不最大化也能看到更多信息。"
+                     Classes="faint" FontSize="11" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
 
       <Border Classes="card">
         <StackPanel Spacing="12">

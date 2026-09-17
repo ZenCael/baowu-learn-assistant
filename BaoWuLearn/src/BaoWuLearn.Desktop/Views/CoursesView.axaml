@@ -106,20 +106,20 @@
       </Grid>
     </Border>
 
-    <Grid ColumnDefinitions="230,*">
+    <Grid ColumnDefinitions="Auto,*">
 
       <!-- ══ 左侧菜单（与平台菜单一致） ══ -->
-      <Border Grid.Column="0" Classes="sidebar">
+      <Border Grid.Column="0" Classes="sidebar" Width="{DynamicResource CourseSidebarWidth}">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Text="课程分类" Classes="label" Margin="16,14,16,8" />
+          <TextBlock DockPanel.Dock="Top" Text="课程分类" Classes="label" Margin="12,10,12,6" />
           <ListBox ItemsSource="{Binding Menus}"
                    SelectedItem="{Binding SelectedMenu}"
                    Background="Transparent"
                    BorderThickness="0"
-                   Margin="6,0,6,10">
+                   Margin="4,0,4,8">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:CourseMenu">
-                <TextBlock Text="{Binding Display}" Margin="4,4"
+                <TextBlock Text="{Binding Display}" Margin="4,3"
                            TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -132,7 +132,7 @@
            合集展开出来的子行与顶层行混在同一个列表里，列宽还得手写一遍表头对上。
            现在与「学习队列」页同一套：HierarchicalTreeDataGridSource，
            合集行有原生展开箭头，表头/列宽/斑马线由控件统一管理。 -->
-      <Border Grid.Column="1" Classes="card" Padding="0" Margin="16">
+      <Border Grid.Column="1" Classes="card" Padding="0" Margin="{DynamicResource PageMargin}">
         <tdg:TreeDataGrid x:Name="CourseTree"
                           Background="Transparent" BorderThickness="0" />
       </Border>

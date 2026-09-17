@@ -119,12 +119,13 @@
     </Border>
 
     <!-- ══ 挂机操作区（开始挂课后浮出，收起后挂机照常运行） ══ -->
-    <Border DockPanel.Dock="Bottom" Classes="console" Margin="16,0,16,16"
+    <Border DockPanel.Dock="Bottom" Classes="console"
+            Margin="{DynamicResource ConsoleMargin}"
             IsVisible="{Binding IsConsoleOpen}">
-      <Grid ColumnDefinitions="*,400" ColumnSpacing="16">
+      <Grid ColumnDefinitions="*,360" ColumnSpacing="12">
 
         <!-- 当前在挂 -->
-        <StackPanel Grid.Column="0" Spacing="10">
+        <StackPanel Grid.Column="0" Spacing="8">
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel Orientation="Horizontal" Spacing="8">
               <TextBlock Text="挂机操作区" Classes="h2" />
@@ -311,10 +312,10 @@
          旧版是「平铺 ItemsControl + └ 制表符假装层级」，展开状态一刷新就丢；
          现在换成 HierarchicalTreeDataGridSource：合集行有原生展开箭头，
          表头/列宽/斑马线由控件统一管理，子行是真正的树节点。 -->
-    <DockPanel Margin="16,16,16,16">
-      <TextBlock DockPanel.Dock="Top" Text="我的已选课程" Classes="label" Margin="0,0,0,8" />
+    <DockPanel Margin="{DynamicResource PageMargin}">
+      <TextBlock DockPanel.Dock="Top" Text="我的已选课程" Classes="label" Margin="0,0,0,6" />
 
-      <Border Classes="card" Padding="0" Margin="0,6,0,0">
+      <Border Classes="card" Padding="0" Margin="0,4,0,0">
         <tdg:TreeDataGrid x:Name="CourseTree"
                           Background="Transparent" BorderThickness="0" />
       </Border>

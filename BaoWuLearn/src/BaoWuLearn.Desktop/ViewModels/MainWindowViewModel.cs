@@ -89,6 +89,9 @@ public partial class MainWindowViewModel : ViewModelBase
     public QueueViewModel Queue { get; }
     public SettingsViewModel Settings { get; }
 
+    /// <summary>启动时供 App 读取的外观设置（皮肤 / 密度）。</summary>
+    public AppSettings CurrentSettings => Settings.CurrentSettings;
+
     /// <summary>
     /// 侧边栏副标题 —— 显示版本号。
     /// 版本号由 publish.sh 的 <c>-p:Version</c> 注入程序集属性，这里运行时读回来，

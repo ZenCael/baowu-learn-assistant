@@ -13,6 +13,7 @@ using BaoWuLearn.Core.Services;
 using BaoWuLearn.Desktop.Services;
 using BaoWuLearn.Desktop.ViewModels;
 using BaoWuLearn.Desktop.Views;
+using Avalonia;
 
 namespace BaoWuLearn.Desktop.Diagnostics;
 
@@ -589,7 +590,7 @@ public static class SelfTest
                     new AuthService(api), new AccountStore(tempPath), _ => { }, _ => { });
 
                 loginVm.SavedAccounts.Add(new SavedAccountRow("100001", "自检账号甲", true, null, _ => { }, _ => { }));
-                loginVm.SavedAccounts.Add(new SavedAccountRow("971278", null, false, null, _ => { }, _ => { }));
+                loginVm.SavedAccounts.Add(new SavedAccountRow("100001", null, false, null, _ => { }, _ => { }));
 
                 var view = new LoginView { DataContext = loginVm };
                 lw = new Window { Width = 480, Height = 760, Content = view, ShowInTaskbar = false };
@@ -2103,13 +2104,88 @@ public static class SelfTest
         }
         W("");
 
+        // ── 皮肤与密度自检（v1.0.40）────────────────────────
+        // 换肤是运行时往 Application.Resources 合并 ResourceInclude：
+        // Source 没赋值、画刷键缺失、密度令牌没写上，都只有真跑一遍才暴露。
+        // 这里把四套皮肤 + 两档密度各 Apply 一次，再核对关键资源是否到位，
+        // 最后恢复到「设置里存的那套」，不让自检改掉用户现场。
+        W("─── 皮肤与密度自检 ───");
+        try
+        {
+            var settings = vm.CurrentSettings;
+            var savedSkin = ThemeService.NormalizeSkinId(settings.SkinId);
+            var savedDensity = ThemeService.NormalizeDensity(settings.UiDensity);
+
+            string? BrushHex(string key)
+            {
+                if (Application.Current?.TryFindResource(key, out var res) != true) return null;
+                return res is Avalonia.Media.IBrush brush ? brush.ToString() : res?.ToString();
+            }
+
+            bool HasKey(string key) =>
+                Application.Current?.TryFindResource(key, out _) == true;
+
+            var skinResults = new List<string>();
+            var allSkinsOk = true;
+            foreach (var skin in ThemeService.Skins)
+            {
+                ThemeService.Apply(skin.Id, savedDensity);
+                // 必须 pump：ResourceInclude 是在 Add 到 MergedDictionaries 时 Loaded 的
+                await PumpAsync();
+
+                var hasBg = HasKey("BgBrush") && BrushHex("BgBrush") is not null;
+                var hasAccent = HasKey("AccentBrush");
+                var hasNav = HasKey("NavActiveBrush");
+                var variant = Application.Current?.RequestedThemeVariant;
+                var variantOk = variant == skin.Variant;
+                var skinOk = hasBg && hasAccent && hasNav && variantOk;
+                if (!skinOk) allSkinsOk = false;
+
+                skinResults.Add($"{skin.DisplayName}={(skinOk ? "PASS" : "FAIL")}"
+                                + (variantOk ? "" : $"[变体={variant}]"));
+            }
+
+            ThemeService.Apply(savedSkin, ThemeService.DensityCompact);
+            await PumpAsync();
+            var compactMargin = Application.Current?.TryFindResource("PageMargin", out var cm) == true
+                ? cm?.ToString()
+                : null;
+            ThemeService.Apply(savedSkin, ThemeService.DensityComfortable);
+            await PumpAsync();
+            var comfortMargin = Application.Current?.TryFindResource("PageMargin", out var fm) == true
+                ? fm?.ToString()
+                : null;
+            var densityOk = compactMargin != comfortMargin
+                            && compactMargin is not null
+                            && comfortMargin is not null;
+
+            // 恢复用户现场，别让自检改掉设置
+            ThemeService.Apply(savedSkin, savedDensity);
+
+            var ok = allSkinsOk && densityOk;
+            if (ok) pass++; else fail++;
+
+            W($"  四套皮肤     : {string.Join(" / ", skinResults)}");
+            W($"  紧凑 PageMargin : {compactMargin ?? "<null>"}");
+            W($"  舒适 PageMargin : {comfortMargin ?? "<null>"}");
+            W($"  密度可区分   : {(densityOk ? "是" : "否")}");
+            W($"  恢复现场     : {savedSkin} / {(savedDensity == ThemeService.DensityCompact ? "紧凑" : "舒适")}");
+            W($"  结论         : {(ok ? "PASS" : "FAIL")}");
+        }
+        catch (Exception ex)
+        {
+            fail++;
+            W($"  FAIL → {ex.GetType().Name}: {ex.Message}");
+        }
+        W("");
+
         // 回到总览，避免自检结束时停在别的页面
         vm.NavigateCommand.Execute("dashboard");
 
         W("──────────────────────────────────────────");
         W($"总计：通过 {pass} 项，失败 {fail} 项");
         W(fail == 0
-            ? ">>> 验证码链路正常，登录页应当可以正常显示验证码。"
+            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度均正常。"
             : ">>> 存在失败项，请把本文件内容发回以便排查。");
         W("==========================================");
 

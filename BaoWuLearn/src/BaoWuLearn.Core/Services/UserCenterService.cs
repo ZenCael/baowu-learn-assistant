@@ -131,7 +131,7 @@ public sealed class UserCenterService
 
         // v1.0.15 实测（学员甲 100001 账号）：归档记录大多不带 beginTime/endTime 字段，
         // 带 beginTimeBegin/endTimeEnd（乃至 yearFlag）过滤会把整批记录滤成空 ——
-        // 971278 之前能查到纯属那几门课恰好有时间字段。这里只传 stuCode（+ 分类），
+        // 100001 之前能查到纯属那几门课恰好有时间字段。这里只传 stuCode（+ 分类），
         // 查全量，与"我的已选"的语义一致。
 
         // 1) 公开课（课程级）—— 只在"全部分类"时才查

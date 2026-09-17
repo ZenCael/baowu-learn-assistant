@@ -15,7 +15,7 @@ PROJ="$ROOT/src/BaoWuLearn.Desktop/BaoWuLearn.Desktop.csproj"
 OUT="$ROOT/dist"
 APP_NAME="宝武学习助手"
 EXE_NAME="BaoWuLearn"
-VERSION="1.0.39"
+VERSION="1.0.40"
 
 DOTNET="${DOTNET:-dotnet}"
 if ! command -v "$DOTNET" >/dev/null 2>&1 && [ -x "$HOME/.dotnet/dotnet" ]; then

@@ -1,37 +1,8 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <Styles.Resources>
-    <ResourceDictionary>
-      <!-- 背景层级 -->
-      <SolidColorBrush x:Key="BgBrush" Color="#0F1115" />
-      <SolidColorBrush x:Key="SidebarBrush" Color="#151821" />
-      <SolidColorBrush x:Key="PanelBrush" Color="#1B1F2A" />
-      <SolidColorBrush x:Key="PanelSoftBrush" Color="#212635" />
-
-      <!-- 描边 -->
-      <SolidColorBrush x:Key="LineBrush" Color="#262B38" />
-      <SolidColorBrush x:Key="LineSoftBrush" Color="#1F2431" />
-
-      <!-- 文字 -->
-      <SolidColorBrush x:Key="TextBrush" Color="#E6E9EF" />
-      <SolidColorBrush x:Key="TextDimBrush" Color="#9AA3B2" />
-      <SolidColorBrush x:Key="TextFaintBrush" Color="#6B7280" />
-
-      <!-- 强调色 -->
-      <SolidColorBrush x:Key="AccentBrush" Color="#2F7BF6" />
-      <SolidColorBrush x:Key="AccentHoverBrush" Color="#4A8DF7" />
-      <!-- 强调色的低饱和铺底：给"正在挂"的那一行当底色，比整块纯蓝克制 -->
-      <SolidColorBrush x:Key="AccentSoftBrush" Color="#172A47" />
-      <SolidColorBrush x:Key="AccentSoftHoverBrush" Color="#1D3255" />
-      <SolidColorBrush x:Key="SuccessBrush" Color="#22C55E" />
-      <!-- 成功色的低饱和铺底：给挂机行「成绩已过线」那个胶囊当底，
-           跟 AccentSoftBrush 同一个思路 —— 暗底上一块纯绿太扎眼 -->
-      <SolidColorBrush x:Key="SuccessSoftBrush" Color="#153021" />
-      <SolidColorBrush x:Key="WarnBrush" Color="#F59E0B" />
-      <SolidColorBrush x:Key="DangerBrush" Color="#EF4444" />
-    </ResourceDictionary>
-  </Styles.Resources>
+  <!-- 颜色画刷全部来自皮肤包（Styles/Skins/*.axaml），由 ThemeService 按设置切换。
+       这里不再内嵌画刷，避免 Styles.Resources 覆盖 Application 层的换肤结果。 -->
 
   <!-- ══ 全局 ══ -->
   <Style Selector="Window">
@@ -75,7 +46,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="8" />
-    <Setter Property="Padding" Value="16" />
+    <Setter Property="Padding" Value="{DynamicResource CardPadding}" />
   </Style>
 
   <!--
@@ -87,7 +58,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource LineSoftBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="Padding" Value="14,12" />
+    <Setter Property="Padding" Value="{DynamicResource TilePadding}" />
   </Style>
 
   <!--
@@ -99,7 +70,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderThickness" Value="3,0,0,0" />
     <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="Padding" Value="16,14" />
+    <Setter Property="Padding" Value="{DynamicResource ConsolePadding}" />
   </Style>
 
   <Style Selector="Border.sidebar">
@@ -111,12 +82,12 @@
     <Setter Property="Background" Value="{DynamicResource SidebarBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
-    <Setter Property="Padding" Value="16,10" />
+    <Setter Property="Padding" Value="{DynamicResource TopbarPadding}" />
   </Style>
 
   <!-- 登录过期横幅：红底白字，一眼看到，比日志页里一行小字显眼得多 -->
   <Style Selector="Border.expibanner">
-    <Setter Property="Background" Value="#33EF4444" />
+    <Setter Property="Background" Value="{DynamicResource DangerBannerBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
     <Setter Property="Padding" Value="16,9" />
@@ -132,7 +103,7 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="{DynamicResource LineSoftBrush}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
-    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Padding" Value="{DynamicResource RowPadding}" />
   </Style>
 
   <Style Selector="Border.row:pointerover">
@@ -151,6 +122,7 @@
   <Style Selector="Border.captcha">
     <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
     <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource CaptchaSurfaceBrush}" />
   </Style>
 
   <Style Selector="Border.captcha:pointerover">
@@ -164,7 +136,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="Padding" Value="{DynamicResource ButtonPadding}" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="Cursor" Value="Hand" />
   </Style>
@@ -177,7 +149,7 @@
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Foreground" Value="{DynamicResource PrimaryOnAccentBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
@@ -191,7 +163,7 @@
   </Style>
 
   <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="#3A1D22" />
+    <Setter Property="Background" Value="{DynamicResource DangerSoftBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
   </Style>
 
@@ -239,7 +211,7 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
-    <Setter Property="Padding" Value="14,9" />
+    <Setter Property="Padding" Value="{DynamicResource NavButtonPadding}" />
     <Setter Property="CornerRadius" Value="6" />
     <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
     <Setter Property="FontSize" Value="13" />
@@ -250,13 +222,13 @@
   </Style>
 
   <Style Selector="Button.nav.active">
-    <Setter Property="Background" Value="#1E2A44" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentHoverBrush}" />
+    <Setter Property="Background" Value="{DynamicResource NavActiveBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource NavActiveTextBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
   <Style Selector="Button.nav.active /template/ ContentPresenter">
-    <Setter Property="Background" Value="#1E2A44" />
+    <Setter Property="Background" Value="{DynamicResource NavActiveBrush}" />
     <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
 

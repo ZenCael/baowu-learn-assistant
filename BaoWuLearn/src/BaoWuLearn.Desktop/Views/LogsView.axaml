@@ -23,10 +23,11 @@
     </Border>
 
     <ScrollViewer Name="LogScroller" ScrollChanged="OnLogScrollerScrollChanged">
-      <ItemsControl ItemsSource="{Binding VisibleEntries}" Margin="12,8">
+      <ItemsControl ItemsSource="{Binding VisibleEntries}"
+                    Margin="{DynamicResource PageMargin}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="models:LogEntry">
-            <Grid ColumnDefinitions="66,34,*" Margin="4,2">
+            <Grid ColumnDefinitions="66,34,*" Margin="2,1">
               <TextBlock Text="{Binding Time}"
                          Classes="faint" FontSize="12"
                          FontFamily="Menlo, Consolas, monospace" />

@@ -5,8 +5,8 @@
         x:DataType="vm:MainWindowViewModel"
         Title="宝武学习助手"
         Icon="avares://BaoWuLearn/Assets/appicon.png"
-        Width="1120" Height="740"
-        MinWidth="900" MinHeight="600"
+        Width="1080" Height="700"
+        MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterScreen">
 
   <Grid>
@@ -17,29 +17,29 @@
                     VerticalContentAlignment="Stretch" />
 
     <!-- ══ 主界面 ══ -->
-    <Grid ColumnDefinitions="200,*" IsVisible="{Binding IsLoggedIn}">
+    <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsLoggedIn}">
 
       <!-- 侧边导航 -->
-      <Border Grid.Column="0" Classes="sidebar">
+      <Border Grid.Column="0" Classes="sidebar" Width="{DynamicResource SidebarWidth}">
         <DockPanel>
 
-          <StackPanel DockPanel.Dock="Top" Margin="18,20,18,14">
+          <StackPanel DockPanel.Dock="Top" Margin="14,14,14,10">
             <TextBlock Text="宝武学习助手" Classes="h2" />
             <!-- 副标题显示版本号（publish.sh 注入），报问题时一眼看到装的是哪一版 -->
             <TextBlock Text="{Binding VersionText}"
-                       Classes="faint" FontSize="11" Margin="0,4,0,0" />
+                       Classes="faint" FontSize="11" Margin="0,2,0,0" />
           </StackPanel>
 
-          <StackPanel DockPanel.Dock="Bottom" Margin="10,10,10,14">
-            <Border Classes="divider" Margin="0,0,0,12" />
+          <StackPanel DockPanel.Dock="Bottom" Margin="8,8,8,10">
+            <Border Classes="divider" Margin="0,0,0,8" />
             <TextBlock Text="{Binding UserDisplay}"
                        Classes="dim" FontSize="12"
                        TextTrimming="CharacterEllipsis"
-                       Margin="8,0,8,8" />
+                       Margin="8,0,8,6" />
             <Button Classes="nav" Content="退出登录" Command="{Binding LogoutCommand}" />
           </StackPanel>
 
-          <StackPanel Margin="10,4">
+          <StackPanel Margin="8,2" Spacing="2">
             <Button Classes="nav"
                     Classes.active="{Binding IsDashboardPage}"
                     Content="总览"

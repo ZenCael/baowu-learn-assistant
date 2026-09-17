@@ -27,12 +27,35 @@ public partial class SettingsViewModel : ViewModelBase
 
     /// <summary>挂课完成策略：0 = 挂满才跳，1 = 及格就跳。</summary>
     [ObservableProperty] private int _completionPolicy;
+
+    /// <summary>界面皮肤 Id。</summary>
+    [ObservableProperty] private string _skinId = ThemeService.DefaultSkinId;
+
+    /// <summary>界面密度：0=舒适，1=紧凑。</summary>
+    [ObservableProperty] private int _uiDensity = ThemeService.DefaultUiDensity;
+
     [ObservableProperty] private string _configPath = "";
     [ObservableProperty] private string _selfTestResult = "尚未测试";
     [ObservableProperty] private bool _isTesting;
 
     /// <summary>保存设置的即时反馈：成功与失败都写这里，避免点了按钮毫无反应。</summary>
     [ObservableProperty] private string _saveStatus = "";
+
+    /// <summary>供主窗口启动时读取的当前设置快照。</summary>
+    public AppSettings CurrentSettings => _current;
+
+    public IReadOnlyList<SkinOption> AvailableSkins => ThemeService.Skins;
+
+    /// <summary>皮肤下拉的选中项（与 <see cref="SkinId"/> 同步）。</summary>
+    public SkinOption? SelectedSkin
+    {
+        get => ThemeService.Skins.FirstOrDefault(s => s.Id == SkinId);
+        set
+        {
+            if (value is null || value.Id == SkinId) return;
+            SkinId = value.Id;
+        }
+    }
 
     public string HeartbeatRange => HumanizeLevel switch
     {
@@ -53,6 +76,9 @@ public partial class SettingsViewModel : ViewModelBase
           + "有些课的要求时长比课件总时长还长，这种情况只有它能挂得完。"
         : "挂满才跳：把课件时长全部挂完才换下一门。成绩最稳，适合要冲学分的课。";
 
+    public string SkinDisplayName =>
+        ThemeService.Skins.FirstOrDefault(s => s.Id == SkinId)?.DisplayName ?? SkinId;
+
     public SettingsViewModel(
         SettingsService settings,
         AccountStore accounts,
@@ -69,6 +95,11 @@ public partial class SettingsViewModel : ViewModelBase
         _humanizeLevel = _current.HumanizeLevel;
         _randomCourseGap = _current.RandomCourseGap;
         _completionPolicy = _current.CompletionPolicy;
+        _skinId = ThemeService.NormalizeSkinId(_current.SkinId);
+        _uiDensity = ThemeService.NormalizeDensity(_current.UiDensity);
+
+        // 启动即按上次选择上皮肤（主窗口创建前由 App 再调一次，保证首帧正确）
+        ThemeService.Apply(_current);
 
         RefreshAccountSummary();
     }
@@ -118,6 +149,20 @@ public partial class SettingsViewModel : ViewModelBase
         ApplyToCore();
     }
 
+    partial void OnSkinIdChanged(string value)
+    {
+        OnPropertyChanged(nameof(SelectedSkin));
+        if (string.IsNullOrEmpty(value)) return;
+        _current.SkinId = ThemeService.NormalizeSkinId(value);
+        ThemeService.Apply(_current);
+    }
+
+    partial void OnUiDensityChanged(int value)
+    {
+        _current.UiDensity = ThemeService.NormalizeDensity(value);
+        ThemeService.Apply(_current);
+    }
+
     private void ApplyToCore()
     {
         Humanize.Current = HumanizeLevel switch
@@ -139,12 +184,14 @@ public partial class SettingsViewModel : ViewModelBase
         _current.HumanizeLevel = HumanizeLevel;
         _current.RandomCourseGap = RandomCourseGap;
         _current.CompletionPolicy = CompletionPolicy;
+        _current.SkinId = ThemeService.NormalizeSkinId(SkinId);
+        _current.UiDensity = ThemeService.NormalizeDensity(UiDensity);
 
         try
         {
             _settings.Save(_current);
             SaveStatus = "设置已保存";
-            _log($"✓ 设置已保存（拟人化：{HeartbeatRange}，完成策略：{(CompletionPolicy == 1 ? "及格就跳" : "挂满才跳")}）");
+            _log($"✓ 设置已保存（拟人化：{HeartbeatRange}，完成策略：{(CompletionPolicy == 1 ? "及格就跳" : "挂满才跳")}，皮肤：{SkinDisplayName}，密度：{(UiDensity == ThemeService.DensityCompact ? "紧凑" : "舒适")}）");
         }
         catch (Exception ex)
         {
