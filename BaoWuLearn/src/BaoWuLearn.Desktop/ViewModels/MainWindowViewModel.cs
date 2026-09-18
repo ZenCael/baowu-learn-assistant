@@ -11,28 +11,29 @@ using CommunityToolkit.Mvvm.Input;
 namespace BaoWuLearn.Desktop.ViewModels;
 
 /// <summary>
-/// 主窗口 ViewModel：持有全部服务与子页面，负责登录态切换与导航。
+/// 主窗口 ViewModel：多账号运行时池的组合根。
+///
+/// v1.0.42 起，「一套服务 + 一台引擎」变成「一池运行时」（<see cref="RuntimeHub"/>）：
+/// 每个登录账号自带 ApiClient/token/引擎/保活/零点预警，互不共享；
+/// 侧栏「挂后台·切换账号」只换查看对象，后台引擎照挂。
+/// 登录页仍用共享的 <c>_api</c> 过验证码 —— token 拿到后立刻复制进运行时，
+/// 共享出口随即清空（此后它只当匿名登录通道用）。
 /// </summary>
 public partial class MainWindowViewModel : ViewModelBase
 {
+    /// <summary>登录页专用网关（验证码 + 登录请求），不持业务 token。</summary>
     private readonly ApiClient _api;
     private readonly AuthService _auth;
-    private readonly CourseService _courses;
-    private readonly UserCenterService _userCenter;
-    private readonly LearnEngine _engine;
     private readonly SettingsService _settings;
     private readonly AccountStore _accounts;
-    private readonly QueueStore _queueStore;
+    private readonly RuntimeHub _hub;
 
-    /// <summary>当前登录账号，用作队列存档的键（按账号分开存，换账号不会串课）。</summary>
-    private string? _currentUserNo;
+    /// <summary>未登录时的占位运行时：让子页面在未登录态也有非空引擎可绑。</summary>
+    private readonly AccountRuntime _cold;
 
-    /// <summary>
-    /// 抑制队列回写。
-    /// 登录时"清掉上个账号的队列再装载本账号的队列"、登出时"清空队列"这几个动作
-    /// 都会触发队列变更事件，若不拦一下，就会把刚存好的存档当场覆盖成空。
-    /// </summary>
-    private bool _suspendQueuePersist;
+    /// <summary>子页面当前绑定的运行时 + 其快照订阅句柄（重建时负责摘钩）。</summary>
+    private AccountRuntime? _pagesRt;
+    private Action<LearnSnapshot>? _pagesSnapshotHandler;
 
     [ObservableProperty] private bool _isLoggedIn;
     [ObservableProperty] private ViewModelBase? _currentPage;
@@ -42,55 +43,29 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private string _currentPageTitle = "总览";
 
     /// <summary>
-    /// 登录过期横幅。平台把过期表达在 HTTP 200 响应体里（v1.0.24 之前完全不可见，
-    /// 挂机空转两个多小时），现在由 ApiClient 全局检出 → 引擎自动暂停 → 这里亮横幅。
+    /// 登录过期横幅（当前查看账号的）。平台把过期表达在 HTTP 200 响应体里，
+    /// 由 ApiClient 全局检出 → 引擎自动暂停 → 运行时标记 → 这里亮横幅。
     /// </summary>
     [ObservableProperty] private bool _sessionExpired;
 
-    /// <summary>过期时引擎是否在挂机（决定重新登录后要不要自动续挂）。</summary>
-    private bool _wasRunningOnExpiry;
-
-    /// <summary>重新登录成功后自动继续挂机（由过期横幅的「重新登录」置位）。</summary>
-    private bool _autoStartAfterRelogin;
-
-    /// <summary>本次登录时刻（保活日志里显示已登录时长用）。</summary>
-    private DateTimeOffset _loginAt = DateTimeOffset.Now;
-
-    /// <summary>
-    /// 会话保活定时器：登录后每 15 分钟带 token 轻探一次个人信息接口。
-    ///
-    /// ★ 目的**不是续命**（曾以为是"活跃滑动续期"，2026-09-13 更正）：
-    ///   平台会话按**自然日**失效、跨不过 0 点，60 秒一次的心跳也拦不住
-    ///   （两个跨 0 点样本：23:37:18 登录与 23:47:59 登录，都在 0 点整被切断）。
-    ///   保活的真实价值只剩两条：①第一时间发现失效（触发横幅 + 引擎自动暂停）
-    ///   ②顺带采样平台的"累计学习时长"。
-    /// ★ 刻意**不**调 <see cref="ApiEndpoints.RefreshToken"/>：该端点在当前网页前端
-    ///   是死代码（enableRefreshToken:!1，全站零调用），正常流量里它的调用量为零；
-    ///   审计记录里若出现唯一账号规律性调用，等于自报"非标准客户端"——
-    ///   指纹风险与未验证的收益不对称。
-    /// </summary>
-    private readonly DispatcherTimer _keepaliveTimer;
-
-    /// <summary>检出会话过期的本地时刻（保活日志里"已过期多久"用它算）。</summary>
-    private DateTimeOffset? _expiredAt;
-
-    /// <summary>
-    /// 跨零点预警定时器：平台会话按**自然日**失效（2026-09-13 实测两例，见
-    /// <see cref="_keepaliveTimer"/> 注释），在 23:45 提醒一次 —— 好让用户有机会
-    /// 在 0 点后重新登录，否则整夜挂机必被切断。23:45 之后才登录的，登录当场就提醒。
-    /// 只写日志、不发任何请求：零指纹成本。
-    /// </summary>
-    private readonly DispatcherTimer _midnightWarnTimer;
+    // ── 子页面：随「当前查看的运行时」重建（v1.0.42）──────
+    [ObservableProperty] private DashboardViewModel _dashboard = null!;
+    [ObservableProperty] private QueueViewModel _queue = null!;
+    [ObservableProperty] private CoursesViewModel _courses = null!;
 
     public LogsViewModel Logs { get; }
     public LoginViewModel Login { get; }
-    public DashboardViewModel Dashboard { get; }
-    public CoursesViewModel Courses { get; }
-    public QueueViewModel Queue { get; }
+    public FleetViewModel Fleet { get; }
     public SettingsViewModel Settings { get; }
+
+    /// <summary>运行时池（自检与总览页共用同一实例）。</summary>
+    public RuntimeHub Hub => _hub;
 
     /// <summary>启动时供 App 读取的外观设置（皮肤 / 密度）。</summary>
     public AppSettings CurrentSettings => Settings.CurrentSettings;
+
+    /// <summary>停在登录页但池里仍有账号 → 登录页显示「返回会话」。</summary>
+    public bool CanReturnToPool => !IsLoggedIn && _hub.All.Count > 0;
 
     /// <summary>
     /// 侧边栏副标题 —— 显示版本号。
@@ -115,216 +90,431 @@ public partial class MainWindowViewModel : ViewModelBase
         // ── 服务装配 ──────────────────────────────────────
         _api = new ApiClient();
         _auth = new AuthService(_api);
-        _courses = new CourseService(_api);
-        _userCenter = new UserCenterService(_api);
-        _engine = new LearnEngine(_api, _courses);
         _settings = new SettingsService();
         _accounts = new AccountStore();
-        _queueStore = new QueueStore();
+        _hub = new RuntimeHub(onNewRuntime: WireRuntime);
+        _cold = new AccountRuntime("", "未登录");
 
         // ── 日志汇聚 ──────────────────────────────────────
         Logs = new LogsViewModel();
-        _api.Log += text => Logs.AppendAuto(text);
-        _engine.Log += text => Logs.AppendAuto(text);
-
-        // 登录过期是后台线程检出的，切回 UI 线程再动绑定属性
-        _api.TokenExpired += _ => Dispatcher.UIThread.Post(ShowSessionExpired);
-
-        // ── 会话保活 ──────────────────────────────────────
-        _keepaliveTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
-        _keepaliveTimer.Tick += async (_, _) => await KeepaliveAsync();
-
-        // 跨零点预警：Interval 由 ArmMidnightWarning 按"距 23:45 还有多久"算出来
-        _midnightWarnTimer = new DispatcherTimer();
-        _midnightWarnTimer.Tick += (_, _) =>
-        {
-            _midnightWarnTimer.Stop();   // 一次性：提醒过就不再响
-            WarnAboutMidnight();
-        };
+        _api.Log += Logs.AppendAuto;
 
         // ── 子页面 ────────────────────────────────────────
-        Login = new LoginViewModel(_auth, _accounts, OnLoginSuccess, text => Logs.AppendAuto(text));
-        Dashboard = new DashboardViewModel(_engine, _userCenter, text => Logs.AppendAuto(text));
-        Queue = new QueueViewModel(_engine, _courses, _userCenter, text => Logs.AppendAuto(text));
-        Courses = new CoursesViewModel(_courses, _userCenter, _engine, Notify);
+        Fleet = new FleetViewModel(_hub, new FleetActions(
+            OpenRuntime, StartRuntime, StopRuntime, ReloginRuntime, LogoutRuntime,
+            StartAllRuntimesAsync, BeginAddAccount));
+        Login = new LoginViewModel(_auth, _accounts, OnLoginSuccess, Logs.AppendAuto);
+        Login.OnReturnPool = ResumePool;
+        RebindPages(_cold);
+
         Settings = new SettingsViewModel(
-            _settings, _accounts, _auth, text => Logs.AppendAuto(text),
+            _settings, _accounts, _auth, Logs.AppendAuto,
             checkUpdate: () => RunUpdateCheckAsync(manual: true));
 
-        _engine.Snapshot += OnEngineSnapshot;
-        _engine.QueueChanged += OnQueueChanged;
+        // 登录过期是后台线程检出的，切回 UI 线程再动绑定属性（按运行时接线见 WireRuntime）
 
         // 设置页清掉已存密码后，登录页下拉里的"已保存密码"提示要立刻跟着变
         Settings.AccountsChanged += Login.ReloadAccounts;
-
-        // 上次登录的账号与密码由 LoginViewModel 自己预填（账号存档里就有）
+        _hub.Changed += OnHubChanged;
 
         CurrentPage = Dashboard;
-        Logs.Append($"宝武学习助手 {VersionText} 已启动（纯 API 模式，不加载平台页面）", LogLevel.Success);
+        Logs.Append($"宝武学习助手 {VersionText} 已启动（纯 API 模式，不加载平台页面；支持多账号并行挂机）",
+            LogLevel.Success);
         _ = Login.RefreshCaptchaAsync();
 
         // ── 自动更新（v1.0.41）─────────────────────────────
         InitUpdateChannel();
     }
 
+    // ── 运行时接线 / 池事件 ────────────────────────────────
+
+    /// <summary>新运行时入池：日志加账号前缀、过期与保活回读转给界面。</summary>
+    private void WireRuntime(AccountRuntime rt)
+    {
+        rt.Log += (text, level) => Logs.Append(Tag(rt) + text, level);
+        rt.ExpiredDetected += r => Dispatcher.UIThread.Post(() => OnRuntimeExpired(r));
+        rt.ProfileRefreshed += p =>
+        {
+            // 只有"这页正显示着它"才刷总览的学习时长卡
+            if (ReferenceEquals(_pagesRt, rt))
+                Dispatcher.UIThread.Post(() => Dashboard.UpdateProfile(p));
+        };
+    }
+
+    /// <summary>多账号时的日志前缀；池里只有一个账号就不啰嗦。</summary>
+    private string Tag(AccountRuntime rt)
+        => rt.UserNo.Length == 0 || _hub.All.Count <= 1 ? "" : $"[{rt.DisplayName}] ";
+
+    private void OnHubChanged()
+    {
+        Login.SetPoolInfo(_hub.All.Count);
+        OnPropertyChanged(nameof(CanReturnToPool));
+
+        if (_hub.Active is { } act && IsLoggedIn)
+        {
+            RebindPages(act);
+            SyncActiveUi();
+        }
+    }
+
+    private void SyncActiveUi()
+    {
+        if (_hub.Active is not { } act) return;
+        SessionExpired = act.SessionExpired;
+        EngineBadge = BadgeOf(act.Engine.State);
+        UserDisplay = act.DisplayName;
+    }
+
     /// <summary>
-    /// 引擎快照来自后台线程，必须切回 UI 线程再改绑定属性，
-    /// 否则会触发 Avalonia 的跨线程访问异常。
+    /// 子页面跟着「当前查看的运行时」重建：Dashboard/Queue/Courses 的构造注入
+    /// 换成这个账号自己那套服务，先摘旧引擎的钩（DetachEngine + 快照退订）。
+    /// 课程页的搜索状态随之丢弃 —— 换账号本就换语境，正好。
     /// </summary>
+    private void RebindPages(AccountRuntime rt)
+    {
+        if (ReferenceEquals(_pagesRt, rt)) return;
+
+        Queue?.DetachEngine();
+        Dashboard?.DetachEngine();
+        if (_pagesRt is { } old && _pagesSnapshotHandler is { } h)
+            old.Engine.Snapshot -= h;
+
+        var log = new Action<string>(t => Logs.AppendAuto(Tag(rt) + t));
+        Dashboard = new DashboardViewModel(rt.Engine, rt.UserCenter, log);
+        Queue = new QueueViewModel(rt.Engine, rt.Courses, rt.UserCenter, log);
+        Courses = new CoursesViewModel(rt.Courses, rt.UserCenter, rt.Engine, m => NotifyOn(rt, m));
+        Dashboard.SetUser(rt.UserNo.Length == 0 ? null : rt.DisplayName,
+                          rt.UserNo.Length == 0 ? null : rt.StuCode);
+        Queue.SetUser(rt.StuCode);
+        Courses.SetUser(rt.StuCode);
+
+        var handler = new Action<LearnSnapshot>(s =>
+        {
+            // 后台账号的快照不进顶栏徽章 —— 徽章说的是"当前看的是哪个"
+            if (ReferenceEquals(_hub.Active, rt)) OnEngineSnapshot(s);
+        });
+        rt.Engine.Snapshot += handler;
+        _pagesSnapshotHandler = handler;
+        _pagesRt = rt;
+    }
+
+    private static string BadgeOf(EngineState s) => s switch
+    {
+        EngineState.Running => "运行中",
+        EngineState.Paused => "已暂停",
+        EngineState.Stopped => "已停止",
+        EngineState.Stopping => "正在停止",
+        _ => "空闲",
+    };
+
+    /// <summary>引擎快照来自后台线程，必须切回 UI 线程再改绑定属性。</summary>
     private void OnEngineSnapshot(LearnSnapshot s)
     {
-        var badge = s.State switch
-        {
-            EngineState.Running => "运行中",
-            EngineState.Paused => "已暂停",
-            EngineState.Stopped => "已停止",
-            EngineState.Stopping => "正在停止",
-            _ => "空闲",
-        };
-
+        var badge = BadgeOf(s.State);
         if (Dispatcher.UIThread.CheckAccess()) EngineBadge = badge;
         else Dispatcher.UIThread.Post(() => EngineBadge = badge);
     }
 
-    /// <summary>
-    /// 检出到登录过期：亮横幅 + 记住"当时是否在挂机"。
-    /// 引擎的自动暂停由引擎自己完成（见 LearnEngine.OnTokenExpired），这里只管界面。
-    /// </summary>
-    private void ShowSessionExpired()
+    /// <summary>某账号检出过期：当前查看的亮横幅，后台的只写日志（总览页行会变红）。</summary>
+    private void OnRuntimeExpired(AccountRuntime rt)
     {
-        if (!IsLoggedIn) return;
-
-        _wasRunningOnExpiry = _engine.State is EngineState.Running or EngineState.Paused;
-        _expiredAt = DateTimeOffset.Now;
-        SessionExpired = true;
-        Logs.Append("⛔ 登录已过期，挂机已自动暂停（已挂进度保留）。"
-                    + "点顶部横幅的「重新登录」续上会话", LogLevel.Error);
-    }
-
-    /// <summary>
-    /// 过期横幅上的「重新登录」：复用退出登录的完整流程
-    ///（停引擎 → 队列按账号存档 → 切回登录页），
-    /// 并记住"过期时在挂机"——重新登录成功后自动把队列拉起来接着挂。
-    /// </summary>
-    [RelayCommand]
-    private void ReLoginAfterExpiry()
-    {
-        SessionExpired = false;
-        _autoStartAfterRelogin = _wasRunningOnExpiry;
-        _wasRunningOnExpiry = false;
-
-        if (_autoStartAfterRelogin)
-            Logs.Append("ℹ 队列已存档：重新登录后将自动继续挂机", LogLevel.Warn);
-
-        Logout();
-    }
-
-    /// <summary>会话保活：轻探一次个人信息接口，顺带把会话状态写进日志。</summary>
-    private async Task KeepaliveAsync()
-    {
-        if (!IsLoggedIn) return;
-
-        try
+        if (ReferenceEquals(_hub.Active, rt))
         {
-            var p = await _userCenter.GetProfileAsync();
+            SessionExpired = true;
+            EngineBadge = "已暂停";
+        }
+        Logs.Append(Tag(rt) + "⛔ 登录已过期，该账号挂机已自动暂停（已挂进度保留）。"
+                    + "点顶部横幅或到多挂机页「重新登录」续上会话", LogLevel.Error);
+    }
 
-            // ★ "没抛异常" ≠ "会话还活着"。平台用 HTTP 200 + isSuccess:false 表达过期，
-            //   而 GetProfileAsync 取不到 data 时是**静默返回 null**（不抛异常）——
-            //   于是会话早就死了，这里还每 15 分钟打印一次"保活正常"。
-            //   2026-09-13 日志里 [00:02:59] 那条就是这么来的假象。判据：那一行没有
-            //   "平台累计学习时长"后缀（LearnTimeText 非空），说明 p 是 null。
-            if (p is null)
+    // ── 登录成功（新登录 / 重新登录两条路）──────────────────
+
+    private void OnLoginSuccess(LoginResult result)
+    {
+        var userNo = result.UserNo ?? "";
+        IsLoggedIn = true;
+
+        var rt = _hub.Find(userNo);
+        if (rt is null)
+        {
+            rt = _hub.Create(userNo, result.RealName ?? result.UserName ?? userNo, _api.Token);
+            rt.StartWatchers();
+            LogTokenLine(rt);
+            Logs.Append(Tag(rt) + $"✓ 登录成功：{rt.DisplayName}", LogLevel.Success);
+
+            // 队列按账号分开存，新入池先把该账号上次的队列装回来
+            var n = _hub.RestoreQueue(rt);
+            if (n > 0)
             {
-                Logs.AppendAuto(SessionExpired
-                    ? "⛔ 会话保活失败：登录仍处于过期状态"
-                      + (_expiredAt is { } at
-                          ? $"（已过期 {(int)(DateTimeOffset.Now - at).TotalMinutes} 分钟）"
-                          : "")
-                      + "，平台一直拒绝本会话 —— 点顶部横幅「重新登录」才能续上"
-                    : "⚠ 会话保活拿不到个人信息（平台既没报过期、也没给 data）—— 本次不处理，下次再探");
-                return;
+                Logs.Append(Tag(rt) + $"✓ 已恢复上次的挂课队列：{n} 门课程", LogLevel.Success);
+                Queue.Refresh();
+                _ = Queue.RefreshQueueScoresAsync();
             }
 
-            // 带上平台侧的「累计学习时长」：这个字段疑似不是实时落库（2026-09-12 用户观察到
-            // 学时 15 与累计 4h22m 对不上），每 15 分钟采样一次，日志里就能看出它到底是
-            // 实时更新、T+1 批量还是别的口径。顺带把总览页的数字也保持新鲜。
-            Logs.AppendAuto($"🔒 会话保活正常（已登录 {(int)(DateTimeOffset.Now - _loginAt).TotalMinutes} 分钟"
-                            + $"，平台累计学习时长 {p.LearnTimeText}）"
-                            + (SessionExpired
-                                ? "；★ 平台重新接受了本会话，但界面仍标着「已过期」—— 挂机不会自动恢复，到挂机页点「开始」即可续挂"
-                                : ""));
-            Dashboard.UpdateProfile(p);
-        }
-        catch (Exception ex)
-        {
-            // 保活失败不弹横幅 —— 若真是过期，响应体检出会统一走横幅路径
-            Logs.AppendAuto($"⚠ 会话保活请求失败：{ex.Message}");
-        }
-    }
+            Navigate("dashboard");
+            _ = CorrectStuCodeAsync(rt, userNo);
 
-    partial void OnIsLoggedInChanged(bool value)
-    {
-        if (value)
-        {
-            _keepaliveTimer.Start();
+            // 登录后先把课程页的首个菜单（公开课程）拉一页 —— 对应网页端"登录后先浏览"的拟人化要求
+            Courses.WarmUp();
         }
         else
         {
-            _keepaliveTimer.Stop();
-            _midnightWarnTimer.Stop();   // 退出登录就别再提醒了
+            var resume = rt.AutoStartAfterRelogin;
+            rt.ApplyRelogin(_api.Token);
+            rt.StartWatchers();
+            _hub.SetActive(rt);
+            Logs.Append(Tag(rt) + "✓ 重新登录成功，该账号会话已续上", LogLevel.Success);
+            SyncActiveUi();
+            if (resume && rt.Engine.Queue.Count > 0)
+            {
+                rt.Engine.Start();
+                Logs.Append(Tag(rt) + "▶ 已自动恢复挂机（过期前的队列已续上）", LogLevel.Success);
+            }
+            Navigate("dashboard");
+            _ = CorrectStuCodeAsync(rt, userNo);
+            Courses.WarmUp();
+        }
+
+        // 共享出口只当登录通道用：token 已复制进运行时，这边立刻清空
+        _api.Token = null;
+    }
+
+    /// <summary>把 token 的有效期摊开讲清楚（原 v1.0.25 逻辑，按运行时各报各的）。</summary>
+    private void LogTokenLine(AccountRuntime rt)
+    {
+        if (AuthService.TryGetTokenExpiry(rt.Api.Token) is { } exp)
+        {
+            var remain = exp - DateTimeOffset.UtcNow;
+            Logs.Append(Tag(rt) + (remain > TimeSpan.Zero
+                    ? $"🔒 token 有效期至 {exp.ToLocalTime():MM-dd HH:mm}（约 {(int)remain.TotalMinutes} 分钟）"
+                    : "🔒 token 疑似已过期（exp 早于当前时间），请注意校准系统时钟"),
+                remain > TimeSpan.Zero ? LogLevel.Info : LogLevel.Warn);
+        }
+        else
+        {
+            // 平台发的是 opaque token（服务端说了算）。实测规律（2026-09-13 两例）：
+            // 会话按自然日失效，活不过 0 点。
+            Logs.AppendAuto(Tag(rt) + "🔒 token 非 JWT，无法本地读取有效期"
+                            + "；★ 实测平台会话按自然日失效（跨 0 点必断，与登录时刻无关）"
+                            + $"—— 本次登录 {rt.LoginAt:HH:mm}，预计 {AccountRuntime.NextMidnight(rt.LoginAt):MM-dd HH:mm} 前后被切断");
         }
     }
 
-    // ── 跨零点预警 ────────────────────────────────────────
+    private async Task CorrectStuCodeAsync(AccountRuntime rt, string? fallback)
+    {
+        try
+        {
+            var profile = await rt.UserCenter.GetProfileAsync();
+            var real = profile?.StuCode;
+
+            if (!string.IsNullOrWhiteSpace(profile?.StuName))
+                rt.DisplayName = profile.StuName;
+
+            if (string.IsNullOrWhiteSpace(real) || real == (fallback ?? "")) return;
+
+            Logs.Append(Tag(rt) + $"工号校正：{fallback} → {real}（归档查询以个人信息接口为准）",
+                LogLevel.Warn);
+            rt.StuCode = real;
+            if (ReferenceEquals(_pagesRt, rt))
+            {
+                Queue.SetUser(real);
+                Courses.SetUser(real);
+                Dashboard.SetUser(profile!.StuName, real);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logs.Append(Tag(rt) + $"⚠ 个人信息获取失败，继续用登录工号：{ex.Message}", LogLevel.Warn);
+        }
+    }
+
+    // ── 多账号池操作 ──────────────────────────────────────
+
+    /// <summary>总览页「打开」：切 Active + 页面重建 + 跳总览。</summary>
+    private void OpenRuntime(AccountRuntime rt)
+    {
+        _hub.SetActive(rt);
+        RebindPages(rt);
+        SyncActiveUi();
+        Navigate("dashboard");
+    }
+
+    private void StartRuntime(AccountRuntime rt)
+    {
+        if (rt.Engine.Queue.Count == 0)
+        {
+            Logs.Append(Tag(rt) + "⚠ 该账号队列为空：先「打开」到课程页挑课", LogLevel.Warn);
+            return;
+        }
+        rt.Engine.Start();
+        Logs.Append(Tag(rt) + "▶ 开始挂机", LogLevel.Success);
+    }
+
+    private void StopRuntime(AccountRuntime rt)
+    {
+        rt.Engine.Stop();
+        Logs.Append(Tag(rt) + "■ 已停止（队列与进度保留）", LogLevel.Warn);
+    }
+
+    /// <summary>过期行的「重新登录」：留着整个池去登录页，且只顶这一个账号的会话。</summary>
+    private void ReloginRuntime(AccountRuntime rt)
+    {
+        rt.AutoStartAfterRelogin = rt.WasRunningOnExpiry;
+        if (rt.AutoStartAfterRelogin)
+            Logs.Append(Tag(rt) + "ℹ 队列已存档：重新登录后将自动继续挂机", LogLevel.Warn);
+
+        _hub.SetActive(null);
+        IsLoggedIn = false;
+        SessionExpired = false;
+        Login.Reset();
+        Login.PrefillFor(rt.UserNo);
+        _ = Login.RefreshCaptchaAsync();
+        Logs.Append($"↪ 去重新登录 {rt.DisplayName}（池中其他账号的挂机不受影响）", LogLevel.Info);
+    }
+
+    /// <summary>顶部过期横幅的「重新登录」。</summary>
+    [RelayCommand]
+    private void ReLoginAfterExpiry()
+    {
+        if (_hub.Active is { } rt) ReloginRuntime(rt);
+    }
+
+    /// <summary>侧栏「挂后台·切换账号」：当前账号连引擎一起留在池里跑，回登录页。</summary>
+    [RelayCommand]
+    private void SwitchAccount()
+    {
+        if (_hub.Active is { } rt) SwitchAccountCore(rt);
+    }
+
+    private void BeginAddAccount()
+    {
+        if (_hub.Active is { } rt) SwitchAccountCore(rt);
+    }
+
+    private void SwitchAccountCore(AccountRuntime rt)
+    {
+        _hub.PersistQueue(rt);
+        _hub.SetActive(null);
+        IsLoggedIn = false;
+        SessionExpired = false;
+        Logs.Append($"↪ {rt.DisplayName} 已挂后台 —— 会话、引擎、保活照常运转（池中 {Hub.All.Count} 个账号）",
+            LogLevel.Info);
+        Login.Reset();
+        _ = Login.RefreshCaptchaAsync();
+    }
+
+    /// <summary>登录页「返回会话」：优先回到正在挂的那个账号。</summary>
+    private void ResumePool()
+    {
+        var pick = _hub.All.FirstOrDefault(r => !r.SessionExpired
+                   && r.Engine.State == EngineState.Running)
+               ?? _hub.All.FirstOrDefault(r => !r.SessionExpired)
+               ?? _hub.All.FirstOrDefault();
+        if (pick is null) return;
+
+        IsLoggedIn = true;
+        _hub.SetActive(pick);
+        RebindPages(pick);
+        SyncActiveUi();
+        Navigate("dashboard");
+        Logs.Append($"↩ 已回到 {pick.DisplayName} 的会话", LogLevel.Info);
+    }
 
     /// <summary>
-    /// 按"平台会话跨不过 0 点"这条实测规则，安排一次跨零点预警。
-    /// 已在 23:45 之后的会话（只剩十几分钟寿命）登录当场就提醒。
+    /// 「全部开始」：给所有「没过期 + 空闲 + 有队列」的账号排错峰启动。
+    /// 排期来自 <see cref="RuntimeHub.StartAllDelays"/>；到点再核一遍状态
+    /// （用户可能已经手动开过），过期了就跳过并说明。
     /// </summary>
-    private void ArmMidnightWarning()
+    private async Task StartAllRuntimesAsync()
     {
-        if (MidnightWarningDelay(DateTimeOffset.Now) is not { } delay)
+        var cands = _hub.All
+            .Where(r => !r.SessionExpired
+                        && r.Engine.State is EngineState.Idle or EngineState.Stopped
+                        && r.Engine.Queue.Count > 0)
+            .ToList();
+        if (cands.Count == 0)
         {
-            WarnAboutMidnight();   // 已经过了 23:45，没什么可等的
+            Logs.Append("全部开始：没有可启动的账号（都过期、在挂、或队列为空）", LogLevel.Warn);
             return;
         }
 
-        _midnightWarnTimer.Interval = delay;
-        _midnightWarnTimer.Start();
+        var delays = RuntimeHub.StartAllDelays(cands.Count);
+        Logs.Append($"▶ 全部开始：{cands.Count} 个账号错峰启动 —— 首个约 {(int)delays[0].TotalSeconds} 秒后，"
+                    + "其后逐个随机间隔 1~4 分钟（心跳相位不对齐，是多人挂机唯一的机器特征防线）",
+            LogLevel.Info);
+
+        var prev = TimeSpan.Zero;
+        foreach (var (rt, delay) in cands.Zip(delays))
+        {
+            await Task.Delay(delay - prev);
+            prev = delay;
+            var captured = rt;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (captured.SessionExpired)
+                {
+                    Logs.Append(Tag(captured) + "⏭ 跳过启动：该账号已过期，等重登", LogLevel.Warn);
+                    return;
+                }
+                if (captured.Engine.State is EngineState.Idle or EngineState.Stopped
+                    && captured.Engine.Queue.Count > 0)
+                {
+                    captured.Engine.Start();
+                    Logs.Append(Tag(captured) + "▶ 已按计划启动", LogLevel.Success);
+                }
+            });
+        }
     }
 
-    /// <summary>
-    /// 跨零点预警的决策（纯函数，供 <c>--selftest</c> 离线验算）：
-    /// 返回 null = 登录当场就该提醒（已经过了今天 23:45）；
-    /// 否则返回距今天 23:45 还要等多久。
-    /// </summary>
+    // ── 退出登录（当前账号移出池；池空了才回登录页）────────
+
+    [RelayCommand]
+    private void Logout()
+    {
+        if (_hub.Active is { } rt) LogoutRuntime(rt);
+        else ShowLoginScreen();
+    }
+
+    private void LogoutRuntime(AccountRuntime rt)
+    {
+        Logs.Append($"已退出登录：{rt.DisplayName}", LogLevel.Warn);
+        _hub.Remove(rt);   // 内部先存档再停引擎再释放；Active 自动挑接替者
+
+        if (_hub.Active is not null)
+        {
+            // 池里还有别的账号：OnHubChanged 已把它们扶正并重建页面
+            Logs.Append($"↩ 池里还有 {_hub.All.Count} 个账号（挂机与保活照常），当前查看：{_hub.Active.DisplayName}",
+                LogLevel.Info);
+            return;
+        }
+
+        ShowLoginScreen();
+    }
+
+    private void ShowLoginScreen()
+    {
+        IsLoggedIn = false;
+        SessionExpired = false;
+        UserDisplay = "未登录";
+        EngineBadge = "空闲";
+        Login.Reset();
+        _ = Login.RefreshCaptchaAsync();
+    }
+
+    private void NotifyOn(AccountRuntime rt, string message)
+    {
+        if (message.StartsWith("请先")) Logs.Append(Tag(rt) + message, LogLevel.Warn);
+        else Logs.AppendAuto(Tag(rt) + message);
+    }
+
+    // ── 跨零点/纯函数转发（保持 v1.0.34 自检与外部引用不破）──
+
+    /// <summary>今天 24:00 的本地时刻（转发至 AccountRuntime，自检与旧调用不变）。</summary>
+    public static DateTimeOffset NextMidnight(DateTimeOffset now) => AccountRuntime.NextMidnight(now);
+
+    /// <summary>跨零点预警决策（转发至 AccountRuntime）。</summary>
     public static TimeSpan? MidnightWarningDelay(DateTimeOffset now)
-    {
-        var warnAt = NextMidnight(now).AddMinutes(-15);   // 今天的 23:45
-        return now >= warnAt ? null : warnAt - now;
-    }
-
-    /// <summary>今天 24:00（即明天 0 点）的本地时刻。公开静态：自检要离线验算跨日边界。</summary>
-    public static DateTimeOffset NextMidnight(DateTimeOffset now)
-        => new DateTimeOffset(
-               new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Unspecified), now.Offset)
-           .AddDays(1);
-
-    /// <summary>
-    /// 提醒：本会话活不过 0 点。刻意把"怎么办"写全 —— 重新登录要人工输图形验证码
-    /// （不 OCR、不绕过），被切断时挂机自动暂停、学时全保留，重登后自动接着挂。
-    /// </summary>
-    private void WarnAboutMidnight()
-    {
-        var remain = (int)(NextMidnight(DateTimeOffset.Now) - DateTimeOffset.Now).TotalMinutes;
-        Logs.Append(
-            $"⏰ 本次会话活不过 0 点：实测平台会话按自然日失效（两个跨 0 点的样本都在 0 点整被切断，"
-            + "与登录时刻无关，60 秒一次的心跳也拦不住）。"
-            + $"本次登录 {_loginAt:HH:mm}，距 0 点还有 {remain} 分钟。"
-            + "要整夜挂机，请在 0 点后重新登录一次（登录要人工输一次图形验证码）；"
-            + "被切断时挂机自动暂停、已挂学时全部保留，重新登录后自动接着挂。",
-            LogLevel.Warn);
-    }
+        => AccountRuntime.MidnightWarningDelay(now);
 
     /// <summary>全局异常兜底的回调：把崩溃信息也写进运行日志页。</summary>
     public void ReportCrash(string message)
@@ -333,6 +523,7 @@ public partial class MainWindowViewModel : ViewModelBase
     // ── 导航 ──────────────────────────────────────────────
 
     public bool IsDashboardPage => ActivePage == "dashboard";
+    public bool IsFleetPage => ActivePage == "fleet";
     public bool IsCoursesPage => ActivePage == "courses";
     public bool IsQueuePage => ActivePage == "queue";
     public bool IsLogsPage => ActivePage == "logs";
@@ -341,6 +532,7 @@ public partial class MainWindowViewModel : ViewModelBase
     partial void OnActivePageChanged(string value)
     {
         OnPropertyChanged(nameof(IsDashboardPage));
+        OnPropertyChanged(nameof(IsFleetPage));
         OnPropertyChanged(nameof(IsCoursesPage));
         OnPropertyChanged(nameof(IsQueuePage));
         OnPropertyChanged(nameof(IsLogsPage));
@@ -354,6 +546,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ActivePage = page;
         CurrentPage = page switch
         {
+            "fleet" => Fleet,
             "courses" => Courses,
             "queue" => Queue,
             "logs" => Logs,
@@ -362,6 +555,7 @@ public partial class MainWindowViewModel : ViewModelBase
         };
         CurrentPageTitle = page switch
         {
+            "fleet" => "多挂机总览",
             "courses" => "课程",
             "queue" => "学习队列",
             "logs" => "运行日志",
@@ -374,176 +568,15 @@ public partial class MainWindowViewModel : ViewModelBase
         if (page == "settings") Settings.RefreshAccountSummary();
     }
 
-    [RelayCommand]
-    private void Logout()
+    partial void OnIsLoggedInChanged(bool value)
     {
-        _engine.Stop();
-
-        // 先把队列按当前账号存好：登出会清空引擎队列，
-        // 不先存档的话这次清空就会把该账号的队列存档一起抹掉。
-        if (!string.IsNullOrEmpty(_currentUserNo))
-            _queueStore.Save(_currentUserNo, _engine.Queue);
-
-        _suspendQueuePersist = true;
-        try
-        {
-            _engine.ClearQueue();
-        }
-        finally
-        {
-            _suspendQueuePersist = false;
-        }
-
-        _currentUserNo = null;
-        _api.Token = null;
-        IsLoggedIn = false;
-        SessionExpired = false;
-        UserDisplay = "未登录";
-        Login.Reset();
-        Logs.Append("已退出登录", LogLevel.Warn);
-        _ = Login.RefreshCaptchaAsync();
+        // 池里每个运行时自带保活计时（登录即挂、在池就跳），
+        // 登录态切换只管界面，不再启停任何计时器。
+        Login.SetPoolInfo(_hub.All.Count);
+        OnPropertyChanged(nameof(CanReturnToPool));
     }
 
-    // ── 挂课队列持久化 ────────────────────────────────────
-
-    /// <summary>队列内容变化时写回存档（登录后每个账号各存一份）。</summary>
-    private void OnQueueChanged()
-    {
-        if (_suspendQueuePersist) return;
-        if (string.IsNullOrEmpty(_currentUserNo)) return;
-
-        _queueStore.Save(_currentUserNo, _engine.Queue);
-    }
-
-    /// <summary>
-    /// 恢复该账号上次的挂课队列。
-    ///
-    /// 存档里的学时 / 成绩是上次退出时的快照，先原样展示，随后由正常的成绩回读刷新 ——
-    /// 总比让用户每次都到课程页重新挑一遍、重新排序强。
-    /// </summary>
-    private void RestoreQueue(string? userNo)
-    {
-        if (string.IsNullOrEmpty(userNo)) return;
-
-        // 清掉上一个账号遗留的队列（此时正处于"已存档"状态，不能再写回）
-        _suspendQueuePersist = true;
-        try
-        {
-            _engine.ClearQueue();
-        }
-        finally
-        {
-            _suspendQueuePersist = false;
-        }
-
-        var saved = _queueStore.Load(userNo);
-        if (saved.Count == 0) return;
-
-        _suspendQueuePersist = true;
-        try
-        {
-            _engine.Enqueue(saved);
-        }
-        finally
-        {
-            _suspendQueuePersist = false;
-        }
-
-        Logs.Append($"✓ 已恢复上次的挂课队列：{saved.Count} 门课程", LogLevel.Success);
-        Queue.Refresh();
-
-        // 存档里是上次退出那一刻的成绩快照，异步刷成服务端最新值
-        _ = Queue.RefreshQueueScoresAsync();
-    }
-
-    // ── 登录成功 ──────────────────────────────────────────
-
-    private void OnLoginSuccess(LoginResult result)
-    {
-        IsLoggedIn = true;
-        SessionExpired = false;
-        UserDisplay = result.RealName ?? result.UserName ?? "已登录";
-        Dashboard.SetUser(result.RealName ?? result.UserName, result.UserNo);
-        Queue.SetUser(result.UserNo);
-        Courses.SetUser(result.UserNo);
-        _currentUserNo = result.UserNo;
-        _loginAt = DateTimeOffset.Now;
-        _expiredAt = null;
-        Logs.Append($"✓ 登录成功：{UserDisplay}", LogLevel.Success);
-
-        // 把 token 的有效期摊开讲清楚：能解析就报死线，解析不了说明是 opaque token，
-        // 只能靠「过期自动暂停 + 重新登录」兜底 —— 两种情况用户都不用猜。
-        if (AuthService.TryGetTokenExpiry(_api.Token) is { } exp)
-        {
-            var remain = exp - DateTimeOffset.UtcNow;
-            Logs.Append(remain > TimeSpan.Zero
-                ? $"🔒 token 有效期至 {exp.ToLocalTime():MM-dd HH:mm}（约 {(int)remain.TotalMinutes} 分钟）"
-                : "🔒 token 疑似已过期（exp 早于当前时间），请注意校准系统时钟",
-                remain > TimeSpan.Zero ? LogLevel.Info : LogLevel.Warn);
-        }
-        else
-        {
-            // 平台发的是 opaque token（服务端说了算），本地读不出死线。
-            // 但 2026-09-13 两次跨 0 点实测把规律钉死了：会话按自然日失效，活不过 0 点。
-            Logs.AppendAuto("🔒 token 非 JWT，无法本地读取有效期"
-                            + "；★ 实测平台会话按自然日失效（跨 0 点必断，与登录时刻无关）"
-                            + $"—— 本次登录 {_loginAt:HH:mm}，预计 {NextMidnight(_loginAt):MM-dd HH:mm} 前后被切断");
-        }
-
-        // 跨零点预警：登录本身就晚于 23:45 的当场提醒，否则挂到 23:45 再提醒
-        ArmMidnightWarning();
-
-        Navigate("dashboard");
-
-        // 队列按账号分开存，登录后先把本账号上次的队列装回来
-        RestoreQueue(result.UserNo);
-
-        // 过期后重新登录的场景：自动把挂机续上（引擎会按服务端 maxPlayTime 接着算，
-        // 不会从零重挂；已过分数线的课会被达标筛查跳过）。
-        if (_autoStartAfterRelogin)
-        {
-            _autoStartAfterRelogin = false;
-            if (_engine.Queue.Count > 0)
-            {
-                _engine.Start();
-                Logs.Append("▶ 已自动恢复挂机（过期前的队列已续上）", LogLevel.Success);
-            }
-        }
-
-        // ★ 工号校正：登录响应里的 userNo/loginName 不保证等于归档查询要的 stuCode
-        //（用手机号/别名登录的账号两者就不同 —— 传错的话"我的已选"四个分类会全部
-        //  静默查空，界面就是一张空表，看不出任何错误）。以个人信息接口为准。
-        _ = CorrectStuCodeAsync(result.UserNo);
-
-        // 登录后先把课程页的首个菜单（公开课程）拉一页，
-        // 对应网页端"登录后先浏览"的拟人化要求
-        Courses.WarmUp();
-    }
-
-    private async Task CorrectStuCodeAsync(string? fallback)
-    {
-        try
-        {
-            var profile = await _userCenter.GetProfileAsync();
-            var real = profile?.StuCode;
-            if (string.IsNullOrWhiteSpace(real) || real == (fallback ?? "")) return;
-
-            Logs.Append($"工号校正：{fallback} → {real}（归档查询以个人信息接口为准）", LogLevel.Warn);
-            Queue.SetUser(real);
-            Courses.SetUser(real);
-            Dashboard.SetUser(profile!.StuName, real);
-        }
-        catch (Exception ex)
-        {
-            Logs.Append($"⚠ 个人信息获取失败，继续用登录工号：{ex.Message}", LogLevel.Warn);
-        }
-    }
-
-    private void Notify(string message)
-    {
-        if (message.StartsWith("请先")) Logs.Append(message, LogLevel.Warn);
-        else Logs.AppendAuto(message);
-    }
+    // ── 退出收尾 ──────────────────────────────────────────
 
     /// <summary>退出流程是否已经开始（窗口 Closing 只应该拦一次）。</summary>
     private int _shutdownStarted;
@@ -552,24 +585,23 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool TryBeginShutdown() => Interlocked.Exchange(ref _shutdownStarted, 1) == 0;
 
     /// <summary>
-    /// 退出收尾：摘掉界面回调 → 停引擎 → 等它把最后一次结算发出去 → 释放网络。
-    ///
-    /// 必须是异步的。以前这里是
-    /// <c>WaitForStopAsync(3s).GetAwaiter().GetResult()</c> —— 在 UI 线程上死等，
-    /// 而同一时刻引擎还在推快照、挂机秒表还在每秒 tick，全都排在这个被占住的
-    /// UI 线程后面。结果就是挂课中点关闭，程序直接卡死（Mac 上必现）。
+    /// 退出收尾：摘界面回调 → 停**池里所有**引擎 → 并行等各自把最后一次结算发出去
+    /// → 释放网络。刻意不串行等（N 个账号 × 3 秒会把关窗拖成"卡死"的观感）。
     /// </summary>
     public async Task ShutdownAsync()
     {
         try
         {
-            // 先摘界面回调：不再往 UI 线程堆活儿，收尾才跑得完
-            Queue.DetachEngine();
-            Dashboard.DetachEngine();
-            _engine.Snapshot -= OnEngineSnapshot;
+            Fleet.Detach();
+            Queue?.DetachEngine();
+            Dashboard?.DetachEngine();
+            if (_pagesRt is { } p && _pagesSnapshotHandler is { } h) p.Engine.Snapshot -= h;
 
-            _engine.Stop();
-            await _engine.WaitForStopAsync(TimeSpan.FromSeconds(3));
+            _hub.StopAll();
+            var runtimes = Hub.All.ToList();
+            await Task.WhenAll(runtimes.Select(rt => rt.Engine.WaitForStopAsync(TimeSpan.FromSeconds(3))));
+            foreach (var rt in runtimes) rt.Dispose();
+            _cold.Dispose();
             _api.Dispose();
         }
         catch
@@ -580,20 +612,17 @@ public partial class MainWindowViewModel : ViewModelBase
 
     /// <summary>
     /// 兜底退出路径（Cmd+Q、自检结束等没经过窗口关闭流程的情形）：
-    /// 只摘回调、发停止信号，**不做任何等待**。
-    ///
-    /// 刻意不等：退出阶段阻塞 UI 线程正是之前卡死的原因。
-    /// 代价是这条路径上最后一次结算可能来不及发出；正常点关闭按钮走的是
-    /// <see cref="ShutdownAsync"/>，会完整收尾。
+    /// 只摘回调、发停止信号，**不做任何等待**（阻塞 UI 线程正是之前卡死的原因）。
     /// </summary>
     public void AbortForShutdown()
     {
         try
         {
-            Queue.DetachEngine();
-            Dashboard.DetachEngine();
-            _engine.Snapshot -= OnEngineSnapshot;
-            _engine.Stop();
+            Fleet.Detach();
+            Queue?.DetachEngine();
+            Dashboard?.DetachEngine();
+            if (_pagesRt is { } p && _pagesSnapshotHandler is { } h) p.Engine.Snapshot -= h;
+            _hub.StopAll();
         }
         catch
         {

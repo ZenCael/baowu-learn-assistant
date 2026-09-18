@@ -373,4 +373,35 @@ public partial class LoginViewModel : ViewModelBase
 
     private static string ShortId(string? id)
         => string.IsNullOrEmpty(id) ? "?" : id.Length <= 8 ? id : id[..8];
+
+    // ── 返回多挂机会话（v1.0.42）──────────────────────────
+
+    /// <summary>池里仍有可返回的运行时（MVM 经 <see cref="SetPoolInfo"/> 同步）。</summary>
+    [ObservableProperty] private bool _canReturnPool;
+
+    /// <summary>「返回会话」按钮文案（带池计数）。</summary>
+    [ObservableProperty] private string _returnPoolText = "";
+
+    /// <summary>返回会话的动作（MVM 注入）。</summary>
+    public Action? OnReturnPool { get; set; }
+
+    /// <summary>MVM 在池变化 / 登录态切换时同步池计数与按钮文案。</summary>
+    public void SetPoolInfo(int poolCount)
+    {
+        CanReturnPool = poolCount > 0;
+        ReturnPoolText = poolCount > 0 ? $"返回会话（{poolCount} 个账号仍在池中挂机）" : "";
+    }
+
+    [RelayCommand]
+    private void ReturnToPool() => OnReturnPool?.Invoke();
+
+    /// <summary>
+    /// 重登指定账号时预填工号与已存密码（多账号池里「重新登录」跳过来的路径）。
+    /// 与 Reset 的预填口径一致：只在「记住账户」开着时才碰密码。
+    /// </summary>
+    public void PrefillFor(string userNo)
+    {
+        UserNo = userNo;
+        Password = RememberAccount ? _accounts.PasswordFor(userNo) ?? "" : "";
+    }
 }

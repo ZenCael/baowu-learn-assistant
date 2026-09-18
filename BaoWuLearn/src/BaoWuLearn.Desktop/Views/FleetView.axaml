@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             x:Class="BaoWuLearn.Desktop.Views.FleetView"
+             x:DataType="vm:FleetViewModel">
+
+  <!-- ══ 多挂机总览（v1.0.42）══
+       一屏看全池里所有账号：状态徽章 / 当前课程进度 / 队列完成 / 行级控制。
+       状态用「字形+文字」不用颜色 —— 窄列一眼可辨，色弱与黑白场景也不丢信息。 -->
+  <Grid RowDefinitions="Auto,*" Margin="0,0,0,0">
+
+    <Border Classes="card" Margin="0,0,0,10">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Text="{Binding SummaryText}"
+                   TextWrapping="Wrap" FontSize="12.5" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Content="全部开始" Classes="primary"
+                Margin="12,0,0,0"
+                Command="{Binding StartAllCommand}"
+                IsVisible="{Binding HasStartable}"
+                ToolTip.Tip="错峰启动：首个 10 秒左右，其后逐个随机间隔 1~4 分钟 —— 引擎心跳绝不同秒起跳" />
+        <Button Grid.Column="2" Content="＋ 添加账号"
+                Margin="8,0,0,0"
+                Command="{Binding AddAccountCommand}"
+                ToolTip.Tip="当前账号挂后台不中断，回到登录页再登一个" />
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1">
+      <StackPanel>
+        <TextBlock Text="{Binding SummaryText}" Classes="dim"
+                   TextWrapping="Wrap" IsVisible="{Binding IsEmpty}"
+                   Margin="2,8" />
+
+        <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:FleetRowViewModel">
+              <Border Classes="card" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="1.15*,0.75*,1.9*,0.65*,Auto">
+
+                  <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding NameText}" FontSize="13"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding SubText}" Classes="faint" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+
+                  <TextBlock Grid.Column="1" Text="{Binding StatusText}"
+                             VerticalAlignment="Center" FontSize="12.5" />
+
+                  <StackPanel Grid.Column="2" Spacing="4" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding CourseText}" FontSize="12"
+                               TextTrimming="CharacterEllipsis" />
+                    <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100"
+                                 Height="5" CornerRadius="3" />
+                  </StackPanel>
+
+                  <TextBlock Grid.Column="3" Text="{Binding QueueText}"
+                             VerticalAlignment="Center" FontSize="12"
+                             HorizontalAlignment="Center" />
+
+                  <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
+                              VerticalAlignment="Center">
+                    <Button Content="打开" Command="{Binding OpenCommand}" />
+                    <Button Content="开始" Classes="primary"
+                            IsVisible="{Binding CanStart}"
+                            Command="{Binding StartCommand}" />
+                    <Button Content="停止" Classes="danger"
+                            IsVisible="{Binding CanStop}"
+                            Command="{Binding StopCommand}" />
+                    <Button Content="重新登录" Classes="danger"
+                            IsVisible="{Binding CanRelogin}"
+                            Command="{Binding ReloginCommand}" />
+                    <Button Content="移除" Command="{Binding RemoveCommand}"
+                            ToolTip.Tip="存档该账号的队列后停止并退出池（课程进度在平台上，不怕移）" />
+                  </StackPanel>
+
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+
+  </Grid>
+</UserControl>

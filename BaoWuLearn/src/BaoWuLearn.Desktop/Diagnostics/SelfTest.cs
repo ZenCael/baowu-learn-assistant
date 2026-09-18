@@ -108,6 +108,7 @@ public static class SelfTest
         foreach (var (key, title) in new[]
                  {
                      ("dashboard", "总览"),
+                     ("fleet", "多挂机"),
                      ("courses", "课程"),
                      ("queue", "学习队列"),
                      ("logs", "运行日志"),
@@ -2284,13 +2285,110 @@ public static class SelfTest
         }
         W("");
 
+        // ── 多账号运行时池自检（v1.0.42）──────────────────
+        // 用假工号走真实 Hub：Create/Remove 全程不发网络请求（token 只是字符串），
+        // 队列存档键是假工号、移出时存档里也是空条目即删，不会污染真用户的档。
+        W("─── 多账号运行时池自检 ───");
+
+        // (1) 运行时隔离：token 各挂各的、Find/Active/Changed 事件正确
+        {
+            var hub = vm.Hub;
+            var changedCount = 0;
+            hub.Changed += () => changedCount++;
+
+            var rtA = hub.Create("自检-甲", "自检甲", "TOKEN-A");
+            var rtB = hub.Create("自检-乙", "自检乙", null);
+
+            var ok = rtA.Api.Token == "TOKEN-A"
+                     && rtB.Api.Token is null
+                     && !ReferenceEquals(rtA.Api, rtB.Api)
+                     && !ReferenceEquals(rtA.Engine, rtB.Engine)
+                     && ReferenceEquals(hub.Active, rtB)
+                     && ReferenceEquals(hub.Find("自检-甲"), rtA);
+
+            hub.Remove(rtA);
+            hub.Remove(rtB);
+            // Changed 全程应广播 ≥4 次：两次 Create 换 Active + 两次 Remove 收尾各一次。
+            // ★ 计数断言必须放在 Remove 之后 —— 提前断言是这条自检初版自己踩的坑。
+            ok &= hub.All.Count == 0 && hub.Active is null && changedCount >= 4;
+            if (!ok)
+                W($"    tokenA={rtA.Api.Token} tokenB={rtB.Api.Token ?? "null"} " +
+                  $"findA={ReferenceEquals(hub.Find("自检-甲"), rtA)} " +
+                  $"changed={changedCount} left={hub.All.Count} activeNull={hub.Active is null}");
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 运行时池：token 隔离 / 查找 / Active / 事件广播");
+        }
+
+        // (2) 「全部开始」错峰排期：严格递增、首个 8~20 秒、步进 55~240 秒、同种子确定性
+        {
+            var seed = 20260918;
+            var d5 = BaoWuLearn.Desktop.Services.RuntimeHub.StartAllDelays(5, new Random(seed));
+            var ok = d5.Count == 5
+                     && d5[0] >= TimeSpan.FromSeconds(8)
+                     && d5[0] <= TimeSpan.FromSeconds(20);
+            for (var i = 1; i < d5.Count && ok; i++)
+            {
+                var step = d5[i] - d5[i - 1];
+                ok &= step >= TimeSpan.FromSeconds(55) && step <= TimeSpan.FromSeconds(240);
+            }
+            ok &= BaoWuLearn.Desktop.Services.RuntimeHub.StartAllDelays(0, new Random(seed)).Count == 0;
+            ok &= BaoWuLearn.Desktop.Services.RuntimeHub.StartAllDelays(1, new Random(seed))[0] == d5[0];
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 全部开始错峰排期（严格递增 5 档 / 空表 / 确定性）");
+        }
+
+        // (3) 总览行状态徽章映射（过期优先于一切）
+        {
+            var ok = BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Running, false, 3) == "● 挂机中"
+                     && BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Running, true, 3) == "⛔ 已过期"
+                     && BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Paused, false, 0) == "⏸ 已暂停"
+                     && BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Stopping, false, 0) == "◌ 停止中"
+                     && BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Idle, false, 0) == "○ 空闲"
+                     && BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Idle, false, 2) == "▷ 空闲可挂"
+                     && BaoWuLearn.Desktop.ViewModels.FleetViewModel.RowStatus(
+                         BaoWuLearn.Core.Services.EngineState.Stopped, false, 1) == "▷ 空闲可挂";
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 总览行状态徽章映射");
+        }
+
+        // (4) 「挂后台」语义：只换 Active，运行时留在池里、引擎没被停、没被释放
+        {
+            var hub = vm.Hub;
+            var rtC = hub.Create("自检-丙", "自检丙", "TOKEN-C");
+            var stateBefore = rtC.Engine.State;
+
+            hub.SetActive(null);   // 挂后台的核心动作就是这个
+            var ok = hub.All.Count(r => r.UserNo == "自检-丙") == 1
+                     && rtC.Engine.State == stateBefore
+                     && rtC.Api.Token == "TOKEN-C"   // 还能用 = 没被 Dispose
+                     && hub.AllIdle;                 // 全池空闲 = 更新安装门仍开
+
+            hub.SetActive(rtC);
+            ok &= ReferenceEquals(hub.Active, rtC);
+            hub.Remove(rtC);
+            ok &= hub.All.Count == 0;
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 挂后台不杀运行时（留池 / 引擎不动 / 移除才释放）");
+        }
+        W("");
+
         // 回到总览，避免自检结束时停在别的页面
         vm.NavigateCommand.Execute("dashboard");
 
         W("──────────────────────────────────────────");
         W($"总计：通过 {pass} 项，失败 {fail} 项");
         W(fail == 0
-            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度、更新通道均正常。"
+            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度、更新通道、多账号运行时池均正常。"
             : ">>> 存在失败项，请把本文件内容发回以便排查。");
         W("==========================================");
 

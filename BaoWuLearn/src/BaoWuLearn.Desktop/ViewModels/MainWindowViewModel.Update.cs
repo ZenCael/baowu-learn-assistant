@@ -37,9 +37,11 @@ public partial class MainWindowViewModel
     /// <summary>下载/换装的即时状态（横幅右侧小字）。</summary>
     [ObservableProperty] private string _updateBusyText = "";
 
-    /// <summary>能不能现在就装（引擎空闲才允许，绑定横幅按钮 IsEnabled）。</summary>
-    public bool CanInstallNow =>
-        _engine.State is EngineState.Idle or EngineState.Stopped or EngineState.Paused;
+    /// <summary>
+    /// 能不能现在就装 —— v1.0.42 起看的是**全池**：只要有任何账号在挂就不装。
+    /// Paused 算空闲（那是过期自动暂停，装完重登本来也要人点）。
+    /// </summary>
+    public bool CanInstallNow => _hub.AllIdle;
 
     /// <summary>纯版本号（VersionText 去掉 v 前缀；开发版返回 null = 不参与比对）。</summary>
     public string? CurrentVersionNumber =>
@@ -143,7 +145,7 @@ public partial class MainWindowViewModel
 
         if (!CanInstallNow)
         {
-            UpdateInfoText = "正在挂机，请先停止引擎再更新（进度会保留）";
+            UpdateInfoText = "有账号正在挂机，请先停止全部引擎再更新（进度会保留）";
             return;
         }
 

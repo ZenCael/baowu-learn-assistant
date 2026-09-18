@@ -187,6 +187,12 @@
                    Classes="faint" FontSize="12"
                    HorizontalAlignment="Center" />
 
+        <!-- 多账号池（v1.0.42）：池里还有在挂的账号时，允许不登新号直接回去 -->
+        <Button Content="{Binding ReturnPoolText}"
+                HorizontalAlignment="Center" Margin="0,6,0,0"
+                IsVisible="{Binding CanReturnPool}"
+                Command="{Binding ReturnToPoolCommand}" />
+
       </StackPanel>
     </Border>
   </Grid>
