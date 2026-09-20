@@ -169,37 +169,61 @@ public sealed class UpdateService : IDisposable
     // ───────────────────────── 换装脚本（纯函数，可自检） ─────────────────────────
 
     /// <summary>
-    /// Windows 单文件 exe 无法覆盖运行中的自己：脚本先等本进程退出，再
-    /// 旧版挪 <c>.bak</c> → 新版上位 → 拉起 → 自删脚本。失败回滚 .bak 并留日志。
+    /// Windows 换装脚本（v1.0.43 起为纯 PowerShell 文本，替代 v1.0.41 的 bat 模板）。
+    ///
+    /// 为什么弃用 bat：bat 落盘是 UTF-8，而 cmd 按**系统 OEM 代码页**（中文环境 GBK）
+    /// 逐行解析——路径一旦含中文（%TEMP% 里的中文用户名、中文目录），整段乱码，
+    /// 换装静默失败而主进程已退 → 用户看到的就是"点更新后闪退、新版本没来"。
+    /// 本方法只产出脚本字符串，路径经 <see cref="PsQuote"/> 转义进 PS 单引号字面量，
+    /// 由 <see cref="LaunchWindowsSwap"/> 以 -EncodedCommand（UTF-16LE）送达，
+    /// 磁盘上不存在任何承载路径的中间文件，没有代码页能参与进来。
+    ///
+    /// 语义不变：等本进程退出 → 旧版挪 <c>.bak</c> → 新版上位 → 拉起 →
+    /// 成功/失败（含回滚）写日志。
     /// </summary>
-    public static string BuildWindowsSwapScript(
+    public static string BuildWindowsSwapCommand(
         int pid, string targetExe, string newFile, string logPath)
     {
-        // PowerShell 里到处是花括号，用「模板 + Replace」拼装，别用插值字符串硬扛。
-        // cmd 里嵌 powershell 的引号规则是「外壳剥一层」：PS 字面量用单引号，
-        // 整段被 -Command "…" 的双引号包住，cmd 不动单引号。
-        const string template =
-            "@echo off\r\n" +
-            "rem BaoWuLearn updater (v1.0.41+) - wait for exit, swap in place, rollback .bak on failure\r\n" +
-            "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command " +
-            "\"$ErrorActionPreference='Stop'; " +
-            "try { while (Get-Process -Id %PID% -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 800 }; " +
-            "Start-Sleep -Milliseconds 1500; " +
-            "if (Test-Path '%TARGET%.bak') { Remove-Item -Force '%TARGET%.bak' }; " +
-            "Move-Item -Force '%TARGET%' '%TARGET%.bak'; " +
-            "try { Move-Item -Force '%NEW%' '%TARGET%'; Start-Process -FilePath '%TARGET%'; " +
-            "'swap-ok' | Out-File -Encoding utf8 '%LOG%' } " +
-            "catch { Move-Item -Force '%TARGET%.bak' '%TARGET%'; " +
-           "'swap-fail-rolledback: ' + $_ | Out-File -Encoding utf8 '%LOG%'; throw } " +
-            "} catch { 'fatal: ' + $_ | Out-File -Encoding utf8 '%LOG%' }\"\r\n" +
-            "del \"%~f0\"\r\n";
-
-        return template
-            .Replace("%PID%", pid.ToString())
-            .Replace("%TARGET%", targetExe)
-            .Replace("%NEW%", newFile)
-            .Replace("%LOG%", logPath);
+        var t = PsQuote(targetExe);
+        var bak = PsQuote(targetExe + ".bak");
+        var n = PsQuote(newFile);
+        var l = PsQuote(logPath);
+        return "$ErrorActionPreference='Stop';"
+            + "try { while (Get-Process -Id " + pid + " -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 800 }; "
+            + "Start-Sleep -Milliseconds 1500; "
+            + "if (Test-Path " + bak + ") { Remove-Item -Force " + bak + " }; "
+            + "Move-Item -Force " + t + " " + bak + "; "
+            + "try { Move-Item -Force " + n + " " + t + "; Start-Process -FilePath " + t + "; "
+            + "'swap-ok' | Out-File -Encoding utf8 " + l + " } "
+            + "catch { Move-Item -Force " + bak + " " + t + "; "
+            + "'swap-fail-rolledback: ' + $_ | Out-File -Encoding utf8 " + l + "; throw } } "
+            + "catch { 'fatal: ' + $_ | Out-File -Encoding utf8 " + l + " }";
     }
+
+    /// <summary>
+    /// 启动 Windows 换装：powershell.exe -EncodedCommand 是唯一可靠送 Unicode 参数
+    /// 进 PowerShell 的方式（命令行参数走 CreateProcess 的 UTF-16，绕开一切代码页）。
+    /// 脚本必须能活过本进程——所以调用方拿到成功返回后应立刻自行退出。
+    /// </summary>
+    public static void LaunchWindowsSwap(int pid, string targetExe, string newFile)
+    {
+        var encoded = EncodePowerShell(BuildWindowsSwapCommand(pid, targetExe, newFile, SwapLogPath()));
+        var psi = new ProcessStartInfo("powershell.exe",
+            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand " + encoded)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (Process.Start(psi) is null)
+            throw new UpdateException("换装进程启动失败（powershell 返回了空进程）");
+    }
+
+    /// <summary>PS 脚本 → -EncodedCommand 载荷（UTF-16LE 的 Base64）。自检也走它保证同源。</summary>
+    public static string EncodePowerShell(string script) =>
+        Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+
+    /// <summary>PS 单引号字面量转义：内部单引号翻倍，其余原样（路径里出现什么都无所谓）。</summary>
+    private static string PsQuote(string s) => "'" + s.Replace("'", "''") + "'";
 
     /// <summary>
     /// macOS 换装：等主进程退出 → 旧 .app 挪 <c>.old</c> → staging 上位 → 重新打开 → 删脚本。
@@ -230,30 +254,20 @@ public sealed class UpdateService : IDisposable
     }
 
     /// <summary>
-    /// 落地并分离启动换装脚本（脚本必须能活过本进程）。
+    /// macOS：落地并分离启动 sh 换装脚本（脚本必须能活过本进程）。
     /// 调用方拿到成功后立刻自行退出，把舞台交给脚本。
+    /// Windows 不走这里——见 <see cref="LaunchWindowsSwap"/>（无脚本文件，防代码页乱码）。
     /// </summary>
-    public static void LaunchSwapScript(string scriptPath)
+    [System.Runtime.Versioning.SupportedOSPlatform("macOS")]
+    public static void LaunchMacSwapScript(string scriptPath)
     {
-        ProcessStartInfo psi;
-        if (OperatingSystem.IsWindows())
+        File.SetUnixFileMode(scriptPath,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var psi = new ProcessStartInfo(scriptPath)
         {
-            psi = new ProcessStartInfo("cmd.exe", $"/c \"\"{scriptPath}\"\"")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-        }
-        else
-        {
-            File.SetUnixFileMode(scriptPath,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            psi = new ProcessStartInfo(scriptPath)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-        }
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
         if (Process.Start(psi) is null)
             throw new UpdateException("换装脚本启动失败（返回了空进程）");
     }

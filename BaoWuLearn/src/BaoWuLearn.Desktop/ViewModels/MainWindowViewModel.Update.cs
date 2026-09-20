@@ -50,6 +50,7 @@ public partial class MainWindowViewModel
     /// <summary>构造末尾调一次：按设置装好更新定时器。</summary>
     private void InitUpdateChannel()
     {
+        ReportSwapOutcome();
         var s = Settings.CurrentSettings;
         if (!s.UpdateChecksEnabled) return;
 
@@ -179,17 +180,17 @@ public partial class MainWindowViewModel
         }
     }
 
-    /// <summary>Windows：单文件 exe 换不了运行中的自己 → .new 交给脚本等进程退出后替换。</summary>
+    /// <summary>
+    /// Windows：单文件 exe 换不了运行中的自己 → 交给 PowerShell 等进程退出后替换。
+    /// v1.0.43 起不落 bat 文件（cmd 按 OEM 代码页解析 UTF-8 会把中文路径整成乱码，
+    /// 换装静默失败 = 用户眼中的"更新后闪退"），改走 -EncodedCommand 直传。
+    /// </summary>
     private void FinalizeWindowsUpdate(string newFile)
     {
         var exe = Environment.ProcessPath
             ?? throw new UpdateException("取不到当前程序路径");
-        var script = Path.Combine(Path.GetTempPath(), "baowu-learn-swap.bat");
-        File.WriteAllText(script,
-            UpdateService.BuildWindowsSwapScript(
-                Environment.ProcessId, exe, newFile, UpdateService.SwapLogPath()));
         FlushSettingsBeforeSwap();
-        UpdateService.LaunchSwapScript(script);
+        UpdateService.LaunchWindowsSwap(Environment.ProcessId, exe, newFile);
     }
 
     /// <summary>
@@ -199,6 +200,8 @@ public partial class MainWindowViewModel
     /// </summary>
     private void FinalizeMacUpdate(string zipFile, string expectVersion)
     {
+        if (!OperatingSystem.IsMacOS())
+            throw new UpdateException("mac 换装通道仅在 macOS 上可用");
         var processPath = Environment.ProcessPath
             ?? throw new UpdateException("取不到当前程序路径");
         var cut = processPath.IndexOf(".app/", StringComparison.OrdinalIgnoreCase);
@@ -234,13 +237,43 @@ public partial class MainWindowViewModel
                 Environment.ProcessId, appPath, stagedApp, appPath + ".old",
                 UpdateService.SwapLogPath()));
         FlushSettingsBeforeSwap();
-        UpdateService.LaunchSwapScript(script);
+        UpdateService.LaunchMacSwapScript(script);
     }
 
     /// <summary>退出前把设置落盘（镜像列表/lastPubDate 都是检查时改的）。</summary>
     private void FlushSettingsBeforeSwap()
     {
         try { _settings.Save(Settings.CurrentSettings); } catch { /* 尽力而为 */ }
+    }
+
+    /// <summary>
+    /// 启动时消费上一轮的换装日志：成功只记一笔，失败必须大声——
+    /// 写日志页 + 设置页状态条，并告知旧版已回滚、可直接重试。
+    /// v1.0.42 之前换装失败是静默的（用户视角=闪退），这条是补的哨兵。
+    /// </summary>
+    private void ReportSwapOutcome()
+    {
+        try
+        {
+            var p = UpdateService.SwapLogPath();
+            if (!File.Exists(p)) return;
+            var text = File.ReadAllText(p).Trim();
+            try { File.Delete(p); } catch { /* 清不掉最多下次重报，不碍事 */ }
+            var first = text.Split('\n')[0].Trim();
+            if (first.Contains("swap-ok"))
+            {
+                Logs.AppendAuto("更新通道：上次换装成功");
+                return;
+            }
+            Logs.AppendAuto($"更新通道：上次换装未成功（{first}），旧版已自动回滚，" +
+                            "点横幅「立即更新」可重试；反复失败请手动下载新版覆盖");
+            Dispatcher.UIThread.Post(() => Settings.UpdateCheckStatus =
+                $"上次更新换装未成功：{first}（旧版已回滚，可重试）");
+        }
+        catch
+        {
+            // 汇报是附属功能，任何异常都不能拦启动
+        }
     }
 
     private static string HostOf(string? url)

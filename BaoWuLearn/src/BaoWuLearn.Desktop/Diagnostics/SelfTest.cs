@@ -2262,13 +2262,21 @@ public static class SelfTest
         // (4) 两平台换装脚本的形态断言（不真实执行——那是砸自己 .app 的事）
         {
             var ok = true;
-            var bat = BaoWuLearn.Core.Update.UpdateService.BuildWindowsSwapScript(
-                4321, @"C:\apps\宝武学习助手.exe", @"C:\apps\宝武学习助手.exe.new", @"C:\temp\bw.log");
-            ok &= bat.Contains("Get-Process -Id 4321");            // 等主进程退出
-            ok &= bat.Contains("'.exe'.bak") || bat.Contains(".bak"); // 旧版留备份
-            ok &= bat.Contains("Start-Process");                   // 装完拉起新版
-            ok &= bat.Contains("swap-fail-rolledback");            // 失败回滚路径存在
-            ok &= bat.Contains("del \"%~f0\"");                    // 脚本自删
+            // v1.0.43：win 侧改走 PowerShell -EncodedCommand。故意用**中文用户名路径**
+            // 做样本——这正是 v1.0.42 翻车现场（bat 被 cmd 按 GBK 解析毁掉路径）。
+            var ps = BaoWuLearn.Core.Update.UpdateService.BuildWindowsSwapCommand(
+                4321, @"C:\Users\张三\宝武学习助手\宝武学习助手.exe",
+                @"C:\Users\张三\AppData\Local\Temp\BaoWuLearn-new.exe", @"C:\temp\bw.log");
+            ok &= ps.Contains("Get-Process -Id 4321");             // 等主进程退出
+            ok &= ps.Contains(".bak");                             // 旧版留备份
+            ok &= ps.Contains("Start-Process");                    // 装完拉起新版
+            ok &= ps.Contains("swap-fail-rolledback");             // 失败回滚路径存在
+            ok &= ps.Contains(@"C:\Users\张三\宝武学习助手\宝武学习助手.exe"); // 中文路径原样在
+            // EncodedCommand 往返：UTF-16LE 编解码逐字一致（win 端的真实送达形态），
+            // 再乱码也只可能乱在代码页里——Base64 载荷里没有代码页什么事
+            var b64 = BaoWuLearn.Core.Update.UpdateService.EncodePowerShell(ps);
+            ok &= System.Text.Encoding.Unicode.GetString(
+                Convert.FromBase64String(b64)) == ps;
 
             var sh = BaoWuLearn.Core.Update.UpdateService.BuildMacSwapScript(
                 4321, "/Applications/宝武学习助手.app", "/tmp/st/宝武学习助手.app",
@@ -2281,7 +2289,7 @@ public static class SelfTest
             ok &= sh.Contains("quarantine");                       // 新版免 Gatekeeper 拦截
 
             if (ok) pass++; else fail++;
-            W($"  {(ok ? "✓" : "✖")} 换装脚本（win bat / mac sh 关键步骤齐全）");
+            W($"  {(ok ? "✓" : "✖")} 换装脚本（win PS 编码送达 / mac sh 关键步骤齐全）");
         }
         W("");
 
