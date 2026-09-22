@@ -2240,9 +2240,9 @@ public static class SelfTest
                 var chain = BaoWuLearn.Core.Update.UpdateManifestParser.BuildEndpointChain(
                     "https://github.com/o/r/releases/download/latest/update.json",
                     ["https://m1", "bad-entry", "https://m1/", ""]);
-                ok &= chain.Count == 2; // 直连 + m1（非法剔除、重复合并、自动补斜杠）
-                ok &= chain[0].StartsWith("https://github.com", StringComparison.Ordinal);
-                ok &= chain[1] == "https://m1/https://github.com/o/r/releases/download/latest/update.json";
+                ok &= chain.Count == 2; // m1 + 直连（v1.0.46 起镜像在前、直连兜底；非法剔除、重复合并、自动补斜杠）
+                ok &= chain[0] == "https://m1/https://github.com/o/r/releases/download/latest/update.json";
+                ok &= chain[1].StartsWith("https://github.com", StringComparison.Ordinal);
                 // 缺 schema 的 JSON 必须报 UpdateException 而不是崩
                 try
                 {
@@ -2258,6 +2258,15 @@ public static class SelfTest
             }
             if (ok) pass++; else fail++;
             W($"  {(ok ? "✓" : "✖")} 清单解析/版本比较/防回滚/端点链");
+        }
+
+        // (3b) v1.0.46 断点续传：断点字节数 → Range 头（0 不出头），纯函数断言
+        {
+            var ok = BaoWuLearn.Core.Update.UpdateService.RangeHeaderValueFor(0) is null
+                  && BaoWuLearn.Core.Update.UpdateService.RangeHeaderValueFor(123) == "bytes=123-"
+                  && BaoWuLearn.Core.Update.UpdateService.RangeHeaderValueFor(52524966) == "bytes=52524966-";
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 下载断点续传 Range 头构造");
         }
 
         // (4) 两平台换装脚本的形态断言（不真实执行——那是砸自己 .app 的事）

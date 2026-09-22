@@ -29,7 +29,7 @@ public sealed class UpdateException(string message) : Exception(message);
 ///   "notes": "更新说明",
 ///   "assets": { "win-x64": { "file": "…exe", "sha256": "…", "size": 52428800 },
 ///               "macos-arm64": { "file": "…zip", "sha256": "…", "size": 50916352 } },
-///   "mirrors": ["https://gh-proxy.com/", "https://ghfast.top/"]
+///   "mirrors": ["https://ghfast.top/", "https://ghproxy.it/", "https://gh-proxy.org/", "https://gh-proxy.com/"]
 /// }
 /// </code>
 /// 签名是 detached 的（同目录 <c>update.sig</c>，64 字节 hex），覆盖 update.json 的原始字节 ——
@@ -73,14 +73,15 @@ public static class UpdateManifestParser
     }
 
     /// <summary>
-    /// 构造取同一个资产的候选端点链：GitHub 直连在前，镜像前缀依次兜底。
+    /// 构造取同一个资产的候选端点链：v1.0.46 起**镜像在前、GitHub 直连兜底**——
+    /// 主要用户群在国内，直连常态是黑洞/10KB/s 级，排前面等于每个端点先白等一轮。
     /// 镜像语义是「前缀拼接」：最终 URL = mirror + 直连 URL（公共 gh 代理的通用用法）。
     /// 空/重复前缀会被剔除；非法条目静默忽略（列表来源是用户输入与网络下发，都可能脏）。
     /// </summary>
     public static IReadOnlyList<string> BuildEndpointChain(
         string directUrl, IReadOnlyList<string>? mirrors)
     {
-        var chain = new List<string> { directUrl };
+        var chain = new List<string>();
         if (mirrors is not null)
         {
             foreach (var m in mirrors)
@@ -92,6 +93,7 @@ public static class UpdateManifestParser
                 if (!chain.Contains(url, StringComparer.Ordinal)) chain.Add(url);
             }
         }
+        chain.Add(directUrl); // 直连永远垫底：镜像全挂时它仍可能是活路（挂代理的用户）
         return chain;
     }
 

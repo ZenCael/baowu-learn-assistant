@@ -18,7 +18,7 @@ PROJ="$ROOT/src/BaoWuLearn.Desktop/BaoWuLearn.Desktop.csproj"
 OUT="$ROOT/dist"
 APP_NAME="宝武学习助手"
 EXE_NAME="BaoWuLearn"
-VERSION="1.0.45"
+VERSION="1.0.46"
 
 # 更新清单的签名工具：macOS 系统 openssl 是 LibreSSL（不支持 ed25519 rawin），
 # 必须找 OpenSSL 3（Homebrew 或 PATH 里可用的那份）。
@@ -178,7 +178,7 @@ gen_update_manifest() {
 
   # 清单里的 file 名 = Release 页的 ASCII 资产名（GitHub API 会剥掉中文名）
   local manifest="$OUT/update.json"
-  printf '%s' "{\"schema\":1,\"version\":\"$VERSION\",\"pubDate\":\"$pubdate\",\"notes\":\"$notes\",\"assets\":{\"win-x64\":{\"file\":\"BaoWuLearn-$VERSION-win-x64.exe\",\"sha256\":\"$sha_win\",\"size\":$n_win},\"macos-arm64\":{\"file\":\"BaoWuLearn-$VERSION-macos-arm64.zip\",\"sha256\":\"$sha_mac\",\"size\":$n_mac}},\"mirrors\":[\"https://gh-proxy.com/\",\"https://ghfast.top/\"]}" > "$manifest"
+  printf '%s' "{\"schema\":1,\"version\":\"$VERSION\",\"pubDate\":\"$pubdate\",\"notes\":\"$notes\",\"assets\":{\"win-x64\":{\"file\":\"BaoWuLearn-$VERSION-win-x64.exe\",\"sha256\":\"$sha_win\",\"size\":$n_win},\"macos-arm64\":{\"file\":\"BaoWuLearn-$VERSION-macos-arm64.zip\",\"sha256\":\"$sha_mac\",\"size\":$n_mac}},\"mirrors\":[\"https://ghfast.top/\",\"https://ghproxy.it/\",\"https://gh-proxy.org/\",\"https://gh-proxy.com/\"]}" > "$manifest"
 
   "$os3" pkeyutl -sign -inkey "$key" -rawin -in "$manifest" \
     | xxd -p | tr -d '\n' | tr 'A-F' 'a-f' > "$OUT/update.sig"

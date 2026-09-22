@@ -152,6 +152,13 @@ public partial class MainWindowViewModel
 
         UpdateBusy = true;
         UpdateBusyText = "下载新版本…";
+        Logs.AppendAuto("更新通道：开始下载产物，沿端点链（镜像在前）尝试");
+        // Progress<T> 在 UI 线程 new → 回调自动回 UI；服务端已按 ≥2Hz 节流
+        var progress = new Progress<DownloadProgress>(p =>
+        {
+            var pct = p.Total > 0 ? (int)(p.Received * 100 / p.Total) : 0;
+            UpdateBusyText = $"下载中 {p.Received / 1048576.0:F1}/{p.Total / 1048576.0:F1} MB · {pct}% · {p.BytesPerSecond / 1024} KB/s · {p.Endpoint}";
+        });
         try
         {
             var dir = Path.Combine(Path.GetTempPath(), "baowu-learn-update");
@@ -160,7 +167,7 @@ public partial class MainWindowViewModel
                 throw new UpdateException($"清单里没有本平台（{key}）的产物");
 
             var file = Path.Combine(dir, asset.FileName);
-            await _updateService!.DownloadVerifiedAsync(manifest, file);
+            await _updateService!.DownloadVerifiedAsync(manifest, file, progress);
 
             UpdateBusyText = "准备换装…";
             if (OperatingSystem.IsWindows()) FinalizeWindowsUpdate(file);
@@ -170,13 +177,15 @@ public partial class MainWindowViewModel
         }
         catch (Exception ex)
         {
+            var msg = ex is UpdateException ue ? ue.Message : ex.Message;
+            // v1.0.46：失败文本常驻不蒸发（旧版 5 秒后清空，用户以为程序死了），
+            // 且记进运行日志可回看；断点已保留，再点「立即更新」会 Range 续传。
+            Logs.AppendAuto($"更新通道：安装失败——{msg}（断点已保留，再点「立即更新」从断处续传）");
             Dispatcher.UIThread.Post(() =>
             {
-                UpdateBusyText = "更新失败：" + (ex is UpdateException ue ? ue.Message : ex.Message);
+                UpdateBusyText = "更新失败：" + msg + "（再点「立即更新」从断点续传）";
                 UpdateBusy = false;
             });
-            await Task.Delay(5000);
-            Dispatcher.UIThread.Post(() => UpdateBusyText = "");
         }
     }
 

@@ -10,6 +10,9 @@ public sealed record UpdateCheckResult(
     bool UpToDate,
     string? Error);
 
+/// <summary>产物下载进度（Endpoint = 当前承运节点，BytesPerSecond = 本次连接均速）。</summary>
+public sealed record DownloadProgress(long Received, long Total, string Endpoint, long BytesPerSecond);
+
 /// <summary>
 /// 自动更新服务（v1.0.41）。
 ///
@@ -32,11 +35,16 @@ public sealed class UpdateService : IDisposable
     public UpdateService(IReadOnlyList<string>? mirrors = null)
     {
         Mirrors = mirrors is null ? [] : [.. mirrors];
-        var handler = new HttpClientHandler { UseProxy = true };
-        _http = new HttpClient(handler)
+        // v1.0.46：总超时不再交给 HttpClient —— v1.0.45 的 15s 总超时会在传输中途
+        // 掐断 52MB 的产物下载（镜像均速 0.3~0.6MB/s，52MB 要一两分钟），全端点
+        // 15s 一轮先后失败 → 用户只见"下载中"永无反应。现在：连接 10s 封顶，
+        // 小请求（清单/验签）各自带 15s CTS，大文件走「响应头 15s + 断流 30s 哨兵」。
+        var handler = new SocketsHttpHandler
         {
-            Timeout = TimeSpan.FromSeconds(15),
+            UseProxy = true,
+            ConnectTimeout = TimeSpan.FromSeconds(10),
         };
+        _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         // 中性 UA：不冒充浏览器（这不是业务接口，没必要伪装），也不带个人信息
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("BaoWuLearnUpdater/1.0");
         _http.DefaultRequestHeaders.Accept.ParseAdd("*/*");
@@ -116,12 +124,28 @@ public sealed class UpdateService : IDisposable
 
     // ───────────────────────────── 下载 ─────────────────────────────
 
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan HeaderTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>断点字节数 → Range 头值（0 不出头；纯函数供自检断言）。</summary>
+    public static string? RangeHeaderValueFor(long haveBytes) =>
+        haveBytes > 0 ? $"bytes={haveBytes}-" : null;
+
     /// <summary>
-    /// 下载当前平台产物并强校验（sha256 + 尺寸），返回可信的本地临时文件路径。
-    /// 校验不过沿端点链换节点重试；全链不过抛 <see cref="UpdateException"/>。
+    /// 下载当前平台产物并强校验（sha256），返回可信的本地临时文件路径。
+    /// v1.0.46 起：
+    /// ① 超时拆成「响应头 15s + 30s 无数据断流哨兵」，不再用总超时腰斩大文件；
+    /// ② 传输失败保留断点，换端点带 Range 续传（跨镜像可续——字节流同源）；
+    ///    416 = 断点已是全文件，直接进校验；服务器无视 Range 回 200 则从头重写；
+    /// ③ 进度 ≥2Hz 经 <paramref name="progress"/> 上报（UI 侧 new Progress&lt;T&gt; 即回 UI 线程）；
+    /// ④ 只有哈希不符才清断点重头（内容不可信）。
+    /// 全链不过抛 <see cref="UpdateException"/>。
     /// </summary>
     public async Task<string> DownloadVerifiedAsync(
-        UpdateManifest manifest, string tempFilePath, CancellationToken ct = default)
+        UpdateManifest manifest, string tempFilePath,
+        IProgress<DownloadProgress>? progress = null,
+        CancellationToken ct = default)
     {
         var key = UpdateManifestParser.CurrentPlatformKey();
         if (!manifest.Assets.TryGetValue(key, out var asset))
@@ -133,37 +157,104 @@ public sealed class UpdateService : IDisposable
 
         foreach (var url in chain)
         {
-            var ok = false;
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(tempFilePath)!);
-                await using (var fs = new FileStream(
-                                 tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
-                using (var rsp = await _http
-                                 .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
-                                 .ConfigureAwait(false))
+                var have = File.Exists(tempFilePath) ? new FileInfo(tempFilePath).Length : 0;
+                if (have > asset.SizeBytes)
                 {
-                    rsp.EnsureSuccessStatusCode();
-                    await rsp.Content.CopyToAsync(fs, null, ct).ConfigureAwait(false);
+                    TryDelete(tempFilePath); // 脏断点（比声明的尺寸还大），重头
+                    have = 0;
+                }
+
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                if (RangeHeaderValueFor(have) is { } range)
+                    req.Headers.TryAddWithoutValidation("Range", range);
+
+                // 响应头计时：拿到头就销毁 CTS，哨兵改由 PumpAsync 的断流计时接管
+                HttpResponseMessage rsp;
+                var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                headerCts.CancelAfter(HeaderTimeout);
+                try { rsp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, headerCts.Token)
+                          .ConfigureAwait(false); }
+                finally { headerCts.Dispose(); }
+
+                long received = have;
+                using (rsp)
+                {
+                    if (rsp.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable)
+                    {
+                        // 断点已是全文件 → 直接进校验
+                    }
+                    else
+                    {
+                        rsp.EnsureSuccessStatusCode();
+                        var append = rsp.StatusCode == System.Net.HttpStatusCode.PartialContent && have > 0;
+                        await using (var fs = new FileStream(tempFilePath,
+                                       append ? FileMode.Append : FileMode.Create,
+                                       FileAccess.Write, FileShare.None))
+                        await using (var net = await rsp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
+                        {
+                            received = await PumpAsync(net, fs, append ? have : 0, asset.SizeBytes,
+                                url, progress, ct).ConfigureAwait(false);
+                        }
+                    }
                 }
 
                 var actual = await Sha256OfFileAsync(tempFilePath, ct).ConfigureAwait(false);
                 if (string.Equals(actual, asset.Sha256, StringComparison.OrdinalIgnoreCase))
-                    ok = true;
-                else
-                    lastError = $"{HostOf(url)}：sha256 不符（期望 {asset.Sha256[..12]}…，实际 {actual[..12]}…）";
+                    return tempFilePath;
+                lastError = $"{HostOf(url)}：sha256 不符（期望 {asset.Sha256[..12]}…，实际 {actual[..12]}…）";
+                TryDelete(tempFilePath); // 内容不可信，断点一并作废
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
-                lastError = $"{HostOf(url)}：{ex.Message}";
+                // 传输层失败（超时/断流/坏响应）：断点文件保留，下一个端点 Range 续
+                lastError = $"{HostOf(url)}：{(ex is UpdateException ue ? ue.Message : ex.Message)}";
             }
-
-            if (ok) return tempFilePath;
-            TryDelete(tempFilePath);
         }
 
         throw new UpdateException("产物下载校验全部失败：" + (lastError ?? "无可用端点"));
+    }
+
+    /// <summary>中转流：断流哨兵（30s 无数据=本节点死透，抛错换端点）+ ≥2Hz 进度上报。</summary>
+    private static async Task<long> PumpAsync(
+        Stream net, Stream fs, long start, long total, string url,
+        IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        var buf = new byte[81920];
+        long received = start;
+        long lastReport = 0;
+        var sw = Stopwatch.StartNew();
+        while (true)
+        {
+            using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            stall.CancelAfter(StallTimeout);
+            int n;
+            try
+            {
+                n = await net.ReadAsync(buf, stall.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new UpdateException($"传输断流（{StallTimeout.TotalSeconds:.0}s 没有新数据）");
+            }
+            if (n <= 0) break;
+            await fs.WriteAsync(buf.AsMemory(0, n), ct).ConfigureAwait(false);
+            received += n;
+            if (sw.ElapsedMilliseconds - lastReport >= 500 || received == total)
+            {
+                lastReport = sw.ElapsedMilliseconds;
+                progress?.Report(new DownloadProgress(
+                    received, total, HostOf(url),
+                    (long)(received / Math.Max(0.2, sw.Elapsed.TotalSeconds))));
+            }
+        }
+        progress?.Report(new DownloadProgress(
+            received, total, HostOf(url),
+            (long)(received / Math.Max(0.2, sw.Elapsed.TotalSeconds))));
+        return received;
     }
 
     // ───────────────────────── 换装脚本（纯函数，可自检） ─────────────────────────
@@ -277,12 +368,15 @@ public sealed class UpdateService : IDisposable
 
     // ───────────────────────────── 工具 ─────────────────────────────
 
+    /// <summary>小请求（清单/签名，KB 级）：单请求 15s 封顶。</summary>
     private async Task<byte[]> GetBytesAsync(string url, CancellationToken ct)
     {
-        using var rsp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(RequestTimeout);
+        using var rsp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token)
             .ConfigureAwait(false);
         rsp.EnsureSuccessStatusCode();
-        return await rsp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+        return await rsp.Content.ReadAsByteArrayAsync(cts.Token).ConfigureAwait(false);
     }
 
     private static async Task<string> Sha256OfFileAsync(string path, CancellationToken ct)
