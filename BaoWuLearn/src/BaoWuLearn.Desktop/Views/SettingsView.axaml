@@ -111,6 +111,18 @@
 
       <Border Classes="card">
         <StackPanel Spacing="12">
+          <TextBlock Text="课件下载" Classes="h2" />
+          <TextBlock Text="视频从平台公开视频区下载（与挂机心跳互不影响）；PDF/附件走登录会话。产物按「根目录/宝武学习助手/课程名/」归档。"
+                     Classes="dim" FontSize="12" TextWrapping="Wrap" />
+          <StackPanel Spacing="6">
+            <TextBlock Text="下载根目录（留空 = 系统「下载」文件夹）" Classes="label" />
+            <TextBox Text="{Binding DownloadDirText}" Watermark="例如 /Users/you/Videos/课程 或 D:\课程" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="12">
           <TextBlock Text="自动更新" Classes="h2" />
           <TextBlock Text="启动后与每 24 小时各静默检查一次；发现新版本只在顶部亮横幅，点「立即更新」才会下载与替换。清单带 ed25519 签名，任何中转节点都伪造不了新版本或产物内容。"
                      Classes="dim" FontSize="12" TextWrapping="Wrap" />

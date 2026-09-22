@@ -173,4 +173,22 @@ public static class ApiEndpoints
 
     /// <summary>查询计算任务。</summary>
     public const string GetComputeTask = OpsBase + "/computeTask/getComputeTask";
+
+    // ── 课件文件下载（v1.0.44+，PDF/附件通道）──────────────
+    //
+    // 2026-09-22 从 stu bundle 静态提取（FilePreview-WaM-ajig.js）：网页端非视频
+    // 课件先查"预览文件"拿 fileId，再走通用文件下载。两接口都要鉴权（token 头），
+    // 与视频静态区（VideoStreamBase，零鉴权）是两个世界。
+
+    /// <summary>查课件预览/附件文件（body {businessNo: wareCode}，返回含 fileId 的数组）。</summary>
+    public const string FilePreviewUrl = Host + "/learn-gateway/service/tms/adm/filePreview/queryPreviewUrl";
+
+    /// <summary>按 fileId 下载原始文件（GET，query 参数；网页端给 600s 超时档）。</summary>
+    public const string FileDownload = Host + "/learn-gateway/service/ss/file/downloadFile";
+
+    /// <summary>
+    /// 视频静态区基址（零鉴权公开目录，实测无凭据 200）。
+    /// HLS 播放地址 = 本基址 + "/" + 目录树 hashCode + "/index.m3u8"。
+    /// </summary>
+    public const string VideoStreamBase = Host + "/learn-gateway/video";
 }

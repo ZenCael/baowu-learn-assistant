@@ -42,6 +42,15 @@ public sealed class AppSettings
     /// 存 ISO 字符串，避免 JSON 数字/时间表示分歧。
     /// </summary>
     public string? LastUpdatePubDate { get; set; }
+
+    /// <summary>课件下载根目录（空 = 系统"下载"文件夹，见 <see cref="ResolvedDownloadRoot"/>）。</summary>
+    public string? DownloadDirectory { get; set; }
+
+    /// <summary>解析实际下载根目录：设置值优先，空/无效回落系统下载目录。</summary>
+    public string ResolvedDownloadRoot =>
+        !string.IsNullOrWhiteSpace(DownloadDirectory) && Directory.Exists(DownloadDirectory)
+            ? DownloadDirectory
+            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/Downloads";
 }
 
 /// <summary>设置读写（存放在用户配置目录，双平台一致）。</summary>

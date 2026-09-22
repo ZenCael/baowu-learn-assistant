@@ -267,6 +267,19 @@ public sealed class WareItem
     /// <summary>是否已学完。</summary>
     public bool Learned { get; set; }
 
+    /// <summary>
+    /// 视频转码指纹（v1.0.44+，目录树字段）。非空 = 该课件有 HLS 流，
+    /// 播放地址 = Host + "/learn-gateway/video/" + HashCode + "/index.m3u8"。
+    /// 网页端播放器同款拼法（stu bundle 静态提取，2026-09-22）。
+    /// </summary>
+    public string? HashCode { get; set; }
+
+    /// <summary>原始文件相对路径（目录树字段）。与 HashCode 二选一：视频无 hashCode 时走直链。</summary>
+    public string? WareUrl { get; set; }
+
+    /// <summary>内容类型（"1"=视频，其余=PDF/附件等走预览-下载通道）。播放器判定用这个字段。</summary>
+    public string? ContentType { get; set; }
+
     /// <summary>时长文本，如 "7分24秒" / "21:03"。</summary>
     public string DurationText
     {

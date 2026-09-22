@@ -18,7 +18,7 @@ PROJ="$ROOT/src/BaoWuLearn.Desktop/BaoWuLearn.Desktop.csproj"
 OUT="$ROOT/dist"
 APP_NAME="宝武学习助手"
 EXE_NAME="BaoWuLearn"
-VERSION="1.0.43"
+VERSION="1.0.44"
 
 # 更新清单的签名工具：macOS 系统 openssl 是 LibreSSL（不支持 ed25519 rawin），
 # 必须找 OpenSSL 3（Homebrew 或 PATH 里可用的那份）。

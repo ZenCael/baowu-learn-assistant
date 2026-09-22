@@ -1,0 +1,136 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BaoWuLearn.Desktop.ViewModels"
+             x:Class="BaoWuLearn.Desktop.Views.DownloadView"
+             x:DataType="vm:DownloadViewModel">
+
+  <!-- ══ 课件下载（v1.0.44）══
+       挂机是攒学时，下载是真学习。上半部列挂机队列里的课程，
+       展开目录挑课件；下半部任务区看进度、续传、打开目录。 -->
+  <Grid RowDefinitions="Auto,*">
+
+    <Border Classes="card" Margin="0,0,0,10">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        <StackPanel Spacing="2" VerticalAlignment="Center">
+          <TextBlock Text="{Binding StatusText}" FontSize="12.5" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OpenRootHint}" Classes="faint" FontSize="11" />
+        </StackPanel>
+        <Button Grid.Column="1" Content="全部暂停" Margin="12,0,0,0"
+                Command="{Binding PauseAllCommand}" />
+        <Button Grid.Column="2" Content="继续未竟" Margin="8,0,0,0"
+                Command="{Binding ResumeAllCommand}"
+                ToolTip.Tip="把排队/暂停/失败的任务重新排进队列（断点续传）" />
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Spacing="10">
+
+        <TextBlock Text="队列课程（展开目录选课件）" Classes="dim" FontSize="12" />
+        <ItemsControl ItemsSource="{Binding Courses}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:DownloadCourseRow">
+              <Border Classes="card" Margin="0,0,0,8">
+                <StackPanel>
+                  <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Title}" FontSize="13"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="faint" FontSize="11">
+                        <Run Text="{Binding SubText}" /><Run Text="  " /><Run Text="{Binding CatalogSummary}" />
+                      </TextBlock>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="＋ 全部下载" Margin="10,0,0,0"
+                            Command="{Binding $parent[UserControl].((vm:DownloadViewModel)DataContext).DownloadAllCommand}"
+                            CommandParameter="{Binding}"
+                            ToolTip.Tip="按目录顺序下载本课全部可下载课件（多视频=多条任务）" />
+                    <TextBlock Grid.Column="2" Text="加载中…" Classes="faint" FontSize="11"
+                               VerticalAlignment="Center" Margin="10,0,0,0"
+                               IsVisible="{Binding IsLoading}" />
+                    <Button Grid.Column="3" Margin="10,0,0,0"
+                            Content="{Binding ExpanderLabel}"
+                            Command="{Binding $parent[UserControl].((vm:DownloadViewModel)DataContext).ToggleRowCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+
+                  <!-- 展开的课件清单 -->
+                  <ItemsControl ItemsSource="{Binding Wares}" IsVisible="{Binding IsExpanded}"
+                                Margin="0,8,0,0">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:WareDownloadRow">
+                        <Border Classes="card" Padding="10,6" Margin="0,0,0,4">
+                          <Grid ColumnDefinitions="*,Auto,80,76,Auto">
+                            <StackPanel VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                         TextTrimming="CharacterEllipsis" />
+                              <TextBlock Text="{Binding CatalogName}" Classes="faint" FontSize="10.5" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding Duration}"
+                                       Classes="dim" FontSize="11.5" VerticalAlignment="Center"
+                                       MinWidth="64" TextAlignment="Right" />
+                            <TextBlock Grid.Column="2" Text="{Binding TypeLabel}"
+                                       Classes="faint" FontSize="11" VerticalAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <Button Grid.Column="4" Content="下载" Margin="10,0,0,0"
+                                    IsEnabled="{Binding CanDownload}"
+                                    Command="{Binding $parent[UserControl].((vm:DownloadViewModel)DataContext).DownloadCommand}"
+                                    CommandParameter="{Binding}" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Text="下载任务" Classes="dim" FontSize="12" />
+        <ItemsControl ItemsSource="{Binding Tasks}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:DownloadTaskRow">
+              <Border Classes="card" Margin="0,0,0,6">
+                <Grid ColumnDefinitions="*,180,Auto,Auto,Auto,Auto">
+                  <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" FontSize="12.5"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="faint" FontSize="11">
+                      <Run Text="{Binding CourseTitle}" /><Run Text=" · " /><Run Text="{Binding KindLabel}" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding ErrorText}" FontSize="11"
+                               Foreground="#D9534F" TextWrapping="Wrap"
+                               IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                    <TextBlock FontSize="11" Classes="dim">
+                      <Run Text="{Binding StateText}" /><Run Text="  " /><Run Text="{Binding ProgressText}" />
+                    </TextBlock>
+                    <ProgressBar Height="5" CornerRadius="3" Minimum="0" Maximum="100"
+                                 Value="{Binding Percent}" IsVisible="{Binding HasProgress}" />
+                  </StackPanel>
+                  <Button Grid.Column="2" Content="暂停" Margin="8,0,0,0"
+                          IsVisible="{Binding CanPause}"
+                          Command="{Binding PauseCommand}" />
+                  <Button Grid.Column="3" Content="续传" Margin="8,0,0,0"
+                          IsVisible="{Binding CanResume}"
+                          Command="{Binding ResumeCommand}" />
+                  <Button Grid.Column="4" Content="打开" Margin="8,0,0,0"
+                          Command="{Binding OpenFolderCommand}"
+                          ToolTip.Tip="在文件管理器中定位已下载文件" />
+                  <Button Grid.Column="5" Content="移除" Margin="8,0,0,0"
+                          Command="{Binding RemoveCommand}" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border Classes="card">
+          <TextBlock Classes="faint" FontSize="11.5" TextWrapping="Wrap"
+                     Text="说明：视频课件从平台公开视频区下载（不占挂机流量、不影响心跳）；PDF/附件需要登录会话。产物按「下载目录/宝武学习助手/课程名/」两级归档；HLS 流合并为 .ts/.mp4 单文件，本机任意播放器可看。" />
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

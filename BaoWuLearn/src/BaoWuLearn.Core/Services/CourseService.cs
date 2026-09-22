@@ -421,6 +421,11 @@ public sealed class CourseService
             DurationSeconds = duration is { } d && d > 0 ? (int)Math.Round(d) : null,
             MarkTimePoint = Str(w, "markeTimePoint"),
             Learned = Str(w, "learnedStatus") == "1",
+            // v1.0.44：下载三件套。播放器源码（index-BFFGkfPu.js）证明目录响应
+            // 一直带着这三个字段，此前没提取。
+            HashCode = Str(w, "hashCode"),
+            WareUrl = Str(w, "wareUrl"),
+            ContentType = Str(w, "contentType"),
         };
     }
 

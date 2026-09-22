@@ -50,6 +50,9 @@ public partial class SettingsViewModel : ViewModelBase
     /// <summary>更新检查的即时结论（含手动「立即检查」的结果）。</summary>
     [ObservableProperty] private string _updateCheckStatus = "尚未检查";
 
+    /// <summary>课件下载根目录（空 = 系统"下载"文件夹）。v1.0.44。</summary>
+    [ObservableProperty] private string _downloadDirText = "";
+
     /// <summary>供主窗口启动时读取的当前设置快照。</summary>
     public AppSettings CurrentSettings => _current;
 
@@ -107,6 +110,7 @@ public partial class SettingsViewModel : ViewModelBase
         ConfigPath = settings.ConfigPath;
         UpdateChecksEnabled = _current.UpdateChecksEnabled;
         UpdateMirrorsText = string.Join("\n", _current.UpdateMirrors);
+        DownloadDirText = _current.DownloadDirectory ?? "";
 
         _humanizeLevel = _current.HumanizeLevel;
         _randomCourseGap = _current.RandomCourseGap;
@@ -203,6 +207,8 @@ public partial class SettingsViewModel : ViewModelBase
         _current.SkinId = ThemeService.NormalizeSkinId(SkinId);
         _current.UiDensity = ThemeService.NormalizeDensity(UiDensity);
         _current.UpdateChecksEnabled = UpdateChecksEnabled;
+        _current.DownloadDirectory = string.IsNullOrWhiteSpace(DownloadDirText)
+            ? null : DownloadDirText.Trim();
         _current.UpdateMirrors = UpdateMirrorsText
             .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(l => l.StartsWith("http", StringComparison.OrdinalIgnoreCase)

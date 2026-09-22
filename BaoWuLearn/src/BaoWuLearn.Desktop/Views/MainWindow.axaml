@@ -57,6 +57,10 @@
                     Content="学习队列"
                     Command="{Binding NavigateCommand}" CommandParameter="queue" />
             <Button Classes="nav"
+                    Classes.active="{Binding IsDownloadPage}"
+                    Content="课件下载"
+                    Command="{Binding NavigateCommand}" CommandParameter="download" />
+            <Button Classes="nav"
                     Classes.active="{Binding IsLogsPage}"
                     Content="运行日志"
                     Command="{Binding NavigateCommand}" CommandParameter="logs" />

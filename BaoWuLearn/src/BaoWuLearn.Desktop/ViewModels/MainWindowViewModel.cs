@@ -1,5 +1,6 @@
 using System.Reflection;
 using Avalonia.Threading;
+using BaoWuLearn.Core.Download;
 using BaoWuLearn.Core.Http;
 using BaoWuLearn.Core.Models;
 using BaoWuLearn.Core.Services;
@@ -31,6 +32,9 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>未登录时的占位运行时：让子页面在未登录态也有非空引擎可绑。</summary>
     private readonly AccountRuntime _cold;
 
+    /// <summary>下载引擎（v1.0.44）：全局单份 —— 任务表跨账号共享，预览通道现取当前激活账号的会话。</summary>
+    private readonly DownloadService _downloads;
+
     /// <summary>子页面当前绑定的运行时 + 其快照订阅句柄（重建时负责摘钩）。</summary>
     private AccountRuntime? _pagesRt;
     private Action<LearnSnapshot>? _pagesSnapshotHandler;
@@ -52,6 +56,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private DashboardViewModel _dashboard = null!;
     [ObservableProperty] private QueueViewModel _queue = null!;
     [ObservableProperty] private CoursesViewModel _courses = null!;
+    [ObservableProperty] private DownloadViewModel _download = null!;
 
     public LogsViewModel Logs { get; }
     public LoginViewModel Login { get; }
@@ -94,6 +99,15 @@ public partial class MainWindowViewModel : ViewModelBase
         _accounts = new AccountStore();
         _hub = new RuntimeHub(onNewRuntime: WireRuntime);
         _cold = new AccountRuntime("", "未登录");
+
+        // ── 下载引擎（v1.0.44）────────────────────────────
+        // 预览通道的鉴权现取当前激活账号（闭包里取，不是构造时快照）；
+        // 任务表与设置同目录（%APPDATA%/BaoWuLearn/download.json）。
+        _downloads = new DownloadService(
+            () => _hub.Active?.Api,
+            () => _settings.Load().ResolvedDownloadRoot,
+            Path.Combine(Path.GetDirectoryName(_settings.ConfigPath) ?? ".", "download.json"));
+        _downloads.ReviveInterrupted();
 
         // ── 日志汇聚 ──────────────────────────────────────
         Logs = new LogsViewModel();
@@ -176,6 +190,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         Queue?.DetachEngine();
         Dashboard?.DetachEngine();
+        Download?.Detach();
         if (_pagesRt is { } old && _pagesSnapshotHandler is { } h)
             old.Engine.Snapshot -= h;
 
@@ -183,6 +198,9 @@ public partial class MainWindowViewModel : ViewModelBase
         Dashboard = new DashboardViewModel(rt.Engine, rt.UserCenter, log);
         Queue = new QueueViewModel(rt.Engine, rt.Courses, rt.UserCenter, log);
         Courses = new CoursesViewModel(rt.Courses, rt.UserCenter, rt.Engine, m => NotifyOn(rt, m));
+        Download = new DownloadViewModel(rt.Engine, rt.Courses, _downloads, log,
+            _settings.Load().ResolvedDownloadRoot + "/宝武学习助手");
+        Download.Refresh();
         Dashboard.SetUser(rt.UserNo.Length == 0 ? null : rt.DisplayName,
                           rt.UserNo.Length == 0 ? null : rt.StuCode);
         Queue.SetUser(rt.StuCode);
@@ -526,6 +544,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsFleetPage => ActivePage == "fleet";
     public bool IsCoursesPage => ActivePage == "courses";
     public bool IsQueuePage => ActivePage == "queue";
+    public bool IsDownloadPage => ActivePage == "download";
     public bool IsLogsPage => ActivePage == "logs";
     public bool IsSettingsPage => ActivePage == "settings";
 
@@ -535,6 +554,7 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsFleetPage));
         OnPropertyChanged(nameof(IsCoursesPage));
         OnPropertyChanged(nameof(IsQueuePage));
+        OnPropertyChanged(nameof(IsDownloadPage));
         OnPropertyChanged(nameof(IsLogsPage));
         OnPropertyChanged(nameof(IsSettingsPage));
     }
@@ -549,6 +569,7 @@ public partial class MainWindowViewModel : ViewModelBase
             "fleet" => Fleet,
             "courses" => Courses,
             "queue" => Queue,
+            "download" => Download,
             "logs" => Logs,
             "settings" => Settings,
             _ => Dashboard,
@@ -558,12 +579,14 @@ public partial class MainWindowViewModel : ViewModelBase
             "fleet" => "多挂机总览",
             "courses" => "课程",
             "queue" => "学习队列",
+            "download" => "课件下载",
             "logs" => "运行日志",
             "settings" => "设置",
             _ => "总览",
         };
 
         if (page == "queue") Queue.OnNavigatedTo();
+        if (page == "download") Download.Refresh();
         // 账号信息在登录页可能改过，进设置页时刷新一下概况
         if (page == "settings") Settings.RefreshAccountSummary();
     }

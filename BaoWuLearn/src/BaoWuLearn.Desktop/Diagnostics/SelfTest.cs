@@ -2293,6 +2293,152 @@ public static class SelfTest
         }
         W("");
 
+        // ── 课件下载自检（v1.0.44）────────────────────────
+        // 全部离线纯函数断言：解析器/清单解析/AES 向量/清洗 —— 不发一个网络请求。
+        W("─── 课件下载自检 ───");
+
+        // (1) 来源决策表：四形态各归各位
+        {
+            var ok = true;
+            var hls = BaoWuLearn.Core.Download.WareSourceResolver.Resolve(
+                new BaoWuLearn.Core.Models.WareItem
+                { WareId = "W1", ContentType = "1", HashCode = "abc/def" });
+            ok &= hls.Kind == BaoWuLearn.Core.Download.WareSourceKind.HlsStream;
+            ok &= hls.Url!.EndsWith("abc/def/index.m3u8", StringComparison.Ordinal);
+
+            var direct = BaoWuLearn.Core.Download.WareSourceResolver.Resolve(
+                new BaoWuLearn.Core.Models.WareItem
+                { WareId = "W2", ContentType = "1", WareUrl = "/upload/课 程/a.mp4?x=1" });
+            ok &= direct.Kind == BaoWuLearn.Core.Download.WareSourceKind.DirectFile;
+            ok &= direct.Url!.StartsWith("https://learn.baowugroup.com/upload/")
+                  && direct.SuggestedExtension == ".mp4";   // query 不干扰扩展名
+
+            var pdf = BaoWuLearn.Core.Download.WareSourceResolver.Resolve(
+                new BaoWuLearn.Core.Models.WareItem { WareId = "W3", ContentType = "2" });
+            ok &= pdf.Kind == BaoWuLearn.Core.Download.WareSourceKind.PreviewFile;
+
+            var none = BaoWuLearn.Core.Download.WareSourceResolver.Resolve(
+                new BaoWuLearn.Core.Models.WareItem { WareId = "", ContentType = "2" });
+            ok &= none.Kind == BaoWuLearn.Core.Download.WareSourceKind.NotDownloadable;
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 来源决策表（HLS/直链/预览/不可下载）");
+        }
+
+        // (2) m3u8 双解析：master 变体排序 + media 分片/密钥/加密标签
+        {
+            var ok = true;
+            var master = "#EXTM3U\n" +
+                "#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n360/index.m3u8\n" +
+                "#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\n720/index.m3u8\n";
+            var variants = BaoWuLearn.Core.Download.M3u8.ParseMaster(master,
+                "https://h/learn-gateway/video/HC/index.m3u8");
+            ok &= variants.Count == 2 && variants[0].Height == 360;   // 升序
+            var top = BaoWuLearn.Core.Download.M3u8.PickHighest(variants);
+            ok &= top?.Height == 720 && top.Uri == "https://h/learn-gateway/video/HC/720/index.m3u8";
+
+            var media = "#EXTM3U\n#EXT-X-TARGETDURATION:10\n" +
+                "#EXT-X-MAP:URI=\"init.mp4\"\n" +
+                "#EXT-X-KEY:METHOD=AES-128,URI=\"k.key\",IV=0x00000000000000000000000000000007\n" +
+                "#EXTINF:10,\nseg1.ts\n#EXTINF:10,\nseg2.ts\n#EXT-X-ENDLIST\n";
+            var pl = BaoWuLearn.Core.Download.M3u8.ParseMedia(media,
+                "https://h/learn-gateway/video/HC/720/index.m3u8");
+            ok &= pl.IsFmp4 && pl.EndList && pl.Segments.Count == 2;
+            ok &= pl.InitSegment == "https://h/learn-gateway/video/HC/720/init.mp4";
+            ok &= pl.Segments[0].Key is { IsAes128: true } k1
+                  && k1.Uri == "https://h/learn-gateway/video/HC/720/k.key";
+            ok &= pl.Segments[0].Key!.Iv is { Length: 16 } iv && iv[15] == 7;
+
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} m3u8 解析（变体排序/相对地址/EXT-X-KEY/MAP）");
+        }
+
+        // (3) HLS AES-128 向量回环 + 默认 IV = 序号大端
+        {
+            var ok = true;
+            try
+            {
+                using var aes = System.Security.Cryptography.Aes.Create();
+                aes.Mode = System.Security.Cryptography.CipherMode.CBC;
+                aes.Padding = System.Security.Cryptography.PaddingMode.PKCS7;
+                aes.GenerateKey();
+                aes.GenerateIV();
+                var plain = System.Text.Encoding.UTF8.GetBytes("宝武学习助手下载自检向量 0123456789");
+                var cipher = aes.CreateEncryptor().TransformFinalBlock(plain, 0, plain.Length);
+                var back = BaoWuLearn.Core.Download.DownloadService.Aes128CbcDecrypt(
+                    cipher, aes.Key, aes.IV);
+                ok &= back.SequenceEqual(plain);
+
+                var iv7 = BaoWuLearn.Core.Download.DownloadService.DefaultIv(7);
+                ok &= iv7.Length == 16 && iv7[15] == 7 && iv7[14] == 0;
+            }
+            catch (Exception ex)
+            {
+                ok = false;
+                W($"  ✖ AES 自检抛异常：{ex.GetType().Name}");
+            }
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} HLS AES-128 解密回环 + 默认 IV");
+        }
+
+        // (4) 文件名片名（课程标题里的非法字符是常态）+ 端点口径
+        {
+            var ok = true;
+            var cleaned = BaoWuLearn.Core.Download.WareSourceResolver.SanitizeFileName(
+                "  安全:生产/培训*教材\"v2\"?.pdf  ");
+            ok &= !cleaned.Contains(':') && !cleaned.Contains('/') && !cleaned.Contains('*')
+                  && !cleaned.EndsWith('.') && cleaned.Contains("v2");
+            ok &= BaoWuLearn.Core.Download.WareSourceResolver.SanitizeFileName(null) == "未命名";
+            ok &= BaoWuLearn.Core.Download.WareSourceResolver.SanitizeFileName("....").Length > 0;
+            ok &= BaoWuLearn.Core.Download.WareSourceResolver.SanitizeFileName(
+                new string('课', 200)).Length <= 80;
+            ok &= BaoWuLearn.Core.Http.ApiEndpoints.VideoStreamBase
+                      == "https://learn.baowugroup.com/learn-gateway/video"
+                  && BaoWuLearn.Core.Http.ApiEndpoints.FileDownload
+                      .Contains("/service/ss/file/downloadFile");
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 文件名清洗 + 下载端点口径");
+        }
+
+        // (5) 任务持久化回环：download.json 存得进、读得回，Running 还原成 Paused
+        {
+            var ok = true;
+            var tmp = Path.Combine(Path.GetTempPath(), $"bw-dl-{Guid.NewGuid():N}.json");
+            try
+            {
+                var svc1 = new BaoWuLearn.Core.Download.DownloadService(() => null, () => "/tmp", tmp);
+                var course = new BaoWuLearn.Core.Models.CourseItem
+                {
+                    CourseNo = "C-selftest", CourseName = "自检课程<>",
+                };
+                var ware = new BaoWuLearn.Core.Models.WareItem
+                {
+                    WareId = "W-selftest", WareName = "自检课件", ContentType = "1",
+                    WareUrl = "https://example.invalid/x.mp4",
+                };
+                var t = svc1.Enqueue(course, ware);
+                // 断网域名几乎立刻失败，但任务行必须已落盘
+                ok &= File.Exists(tmp) && Path.GetFileName(t.TargetPath).StartsWith("自检课件");
+
+                var svc2 = new BaoWuLearn.Core.Download.DownloadService(() => null, () => "/tmp", tmp);
+                var restored = svc2.Snapshot().FirstOrDefault(x => x.WareId == "W-selftest");
+                ok &= restored is not null
+                      && restored.State is not BaoWuLearn.Core.Download.DownloadState.Running
+                      && restored.TargetPath.Contains("宝武学习助手");
+                svc2.Dispose();
+                svc1.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ok = false;
+                W($"  ✖ 持久化自检抛异常：{ex.GetType().Name} {ex.Message}");
+            }
+            finally { SafeDelete(tmp); }
+            if (ok) pass++; else fail++;
+            W($"  {(ok ? "✓" : "✖")} 任务持久化回环（重启可续、目录归档口径）");
+        }
+        W("");
+
         // ── 多账号运行时池自检（v1.0.42）──────────────────
         // 用假工号走真实 Hub：Create/Remove 全程不发网络请求（token 只是字符串），
         // 队列存档键是假工号、移出时存档里也是空条目即删，不会污染真用户的档。
@@ -2396,7 +2542,7 @@ public static class SelfTest
         W("──────────────────────────────────────────");
         W($"总计：通过 {pass} 项，失败 {fail} 项");
         W(fail == 0
-            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度、更新通道、多账号运行时池均正常。"
+            ? ">>> 全部通过：验证码链路、页面渲染、皮肤与密度、更新通道、课件下载、多账号运行时池均正常。"
             : ">>> 存在失败项，请把本文件内容发回以便排查。");
         W("==========================================");
 
