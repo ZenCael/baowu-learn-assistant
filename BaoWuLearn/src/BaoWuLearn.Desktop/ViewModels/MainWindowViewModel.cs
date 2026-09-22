@@ -155,6 +155,25 @@ public partial class MainWindowViewModel : ViewModelBase
         };
     }
 
+    /// <summary>
+    /// 下载页「更改保存目录…」的持久化通道：写回设置文件，
+    /// DownloadService 每次入队都重新解析根目录，改完下一单立即生效。
+    /// </summary>
+    private void SaveDownloadRoot(string? path, Action<string> log)
+    {
+        try
+        {
+            var s = _settings.Load();
+            s.DownloadDirectory = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+            _settings.Save(s);
+            log($"✓ 课件下载目录已改为：{s.ResolvedDownloadRoot}");
+        }
+        catch (Exception ex)
+        {
+            log("✖ 下载目录保存失败：" + ex.Message);
+        }
+    }
+
     /// <summary>多账号时的日志前缀；池里只有一个账号就不啰嗦。</summary>
     private string Tag(AccountRuntime rt)
         => rt.UserNo.Length == 0 || _hub.All.Count <= 1 ? "" : $"[{rt.DisplayName}] ";
@@ -199,7 +218,8 @@ public partial class MainWindowViewModel : ViewModelBase
         Queue = new QueueViewModel(rt.Engine, rt.Courses, rt.UserCenter, log);
         Courses = new CoursesViewModel(rt.Courses, rt.UserCenter, rt.Engine, m => NotifyOn(rt, m));
         Download = new DownloadViewModel(rt.Engine, rt.Courses, _downloads, log,
-            _settings.Load().ResolvedDownloadRoot + "/宝武学习助手");
+            () => _settings.Load().ResolvedDownloadRoot,
+            p => SaveDownloadRoot(p, log));
         Download.Refresh();
         Dashboard.SetUser(rt.UserNo.Length == 0 ? null : rt.DisplayName,
                           rt.UserNo.Length == 0 ? null : rt.StuCode);

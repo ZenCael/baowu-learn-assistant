@@ -111,6 +111,7 @@ public static class SelfTest
                      ("fleet", "多挂机"),
                      ("courses", "课程"),
                      ("queue", "学习队列"),
+                     ("download", "课件下载"),
                      ("logs", "运行日志"),
                      ("settings", "设置"),
                  })

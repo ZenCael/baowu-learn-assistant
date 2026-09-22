@@ -116,7 +116,15 @@
                      Classes="dim" FontSize="12" TextWrapping="Wrap" />
           <StackPanel Spacing="6">
             <TextBlock Text="下载根目录（留空 = 系统「下载」文件夹）" Classes="label" />
-            <TextBox Text="{Binding DownloadDirText}" Watermark="例如 /Users/you/Videos/课程 或 D:\课程" />
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBox Text="{Binding DownloadDirText}" Watermark="点右侧「浏览…」选择，或手输路径" />
+              <Button Grid.Column="1" Content="浏览…" Margin="8,0,0,0" Click="PickDownloadDir_Click"
+                      ToolTip.Tip="用系统目录选择器挑选保存位置" />
+              <Button Grid.Column="2" Content="用默认" Margin="8,0,0,0" Click="ResetDownloadDir_Click"
+                      ToolTip.Tip="清空自定义路径，回到系统「下载」文件夹" />
+            </Grid>
+            <TextBlock Text="选完或改完记得点页面下方的「保存设置」，否则不生效。"
+                       Classes="faint" FontSize="11" />
           </StackPanel>
         </StackPanel>
       </Border>

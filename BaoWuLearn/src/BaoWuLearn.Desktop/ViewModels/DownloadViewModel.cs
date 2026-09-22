@@ -12,9 +12,10 @@ namespace BaoWuLearn.Desktop.ViewModels;
 /// <summary>
 /// 下载页（v1.0.44+）—— 真想学的课，把课件存到本地。
 ///
-/// 上半部分列当前账号挂机队列里的课程（下载范围和挂机范围天然一致），
-/// 展开目录树后可单条下载或"全部下载"（一门课多个视频 = 多条任务）；
-/// 下半部分是任务区：进度、暂停/续传、重试、打开所在目录。
+/// v1.0.45 改版：页面拆成两个 tab ——「课程列表」列挂机队列里的课
+/// （下载范围和挂机范围天然一致，标题里明说来源），「下载列表」看任务
+/// 进度、暂停/续传、重试、打开所在目录；排任务后自动跳到下载列表，
+/// 免得用户找不到刚排进去的任务。
 ///
 /// 与挂机解耦：这里只读取队列课程清单，不碰引擎状态；
 /// 静态视频区流量也不走 ApiClient（见 DownloadService 头注）。
@@ -25,30 +26,46 @@ public partial class DownloadViewModel : ViewModelBase
     private readonly CourseService _courses;
     private readonly DownloadService _downloads;
     private readonly Action<string> _log;
+    private readonly Func<string> _rootHint;
+    private readonly Action<string?> _saveRoot;
 
     [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private string _statusText = "从上方课程展开目录，挑课件下载";
+    [ObservableProperty] private string _statusText = "从课程列表挑课件下载（与挂机队列同范围）";
     [ObservableProperty] private string _openRootHint = "";
+    [ObservableProperty] private int _selectedTab;
 
     public ObservableCollection<DownloadCourseRow> Courses { get; } = new();
     public ObservableCollection<DownloadTaskRow> Tasks { get; } = new();
 
+    /// <summary>当前解析出的保存根目录（供视图层做目录选择器的起始位置）。</summary>
+    public string CurrentRoot => _rootHint();
+
+    public string CoursesTabHeader => $"课程列表 · 来自挂机队列（{Courses.Count} 门）";
+    public string TasksTabHeader => ActiveTaskCount > 0
+        ? $"下载列表 · {ActiveTaskCount} 个进行中"
+        : Tasks.Count > 0 ? "下载列表 · 全部处理完" : "下载列表";
+    public int ActiveTaskCount => Tasks.Count(t => t.CanPause);
+    public bool HasAnyTasks => Tasks.Count > 0;
+
     public DownloadViewModel(LearnEngine engine, CourseService courses,
-        DownloadService downloads, Action<string> log, string downloadRootHint)
+        DownloadService downloads, Action<string> log,
+        Func<string> rootHintProvider, Action<string?> saveRoot)
     {
         _engine = engine;
         _courses = courses;
         _downloads = downloads;
         _log = log;
+        _rootHint = rootHintProvider;
+        _saveRoot = saveRoot;
 
         _downloads.Changed += OnDownloadsChanged;
         _downloads.Progressed += OnDownloadsProgressed;
 
         RebuildTasks();
-        OpenRootHint = $"保存目录：{downloadRootHint}";
+        RefreshRootHint();
     }
 
-    /// <summary>换账号/刷新时由主窗口调。</summary>
+    /// <summary>换账号/刷新时由主窗口调（进页面也会调，保存目录改动即时可见）。</summary>
     public void Refresh()
     {
         var queue = _engine.Queue;
@@ -57,7 +74,21 @@ public partial class DownloadViewModel : ViewModelBase
             Courses.Add(new DownloadCourseRow(c, _courses, LoadCatalogAsync, _log));
         StatusText = queue.Count == 0
             ? "挂机队列是空的 —— 先到挂机页挑课，这里才有可下载的课程"
-            : $"共 {queue.Count} 门队列课程 · 展开目录选课件下载";
+            : $"共 {queue.Count} 门队列课程 · 展开目录选课件，或点「全部下载」整课排进队列";
+        RefreshRootHint();
+        OnPropertyChanged(nameof(CoursesTabHeader));
+    }
+
+    private void RefreshRootHint() =>
+        OpenRootHint = $"保存目录：{_rootHint()}/宝武学习助手（按课程名分文件夹归档）";
+
+    /// <summary>视图层选完目录后回调：持久化设置并刷新提示。</summary>
+    public void ApplyPickedDownloadRoot(string path)
+    {
+        _saveRoot(path);
+        RefreshRootHint();
+        StatusText = $"下载目录已更新：{path}";
+        OnPropertyChanged(nameof(CoursesTabHeader));
     }
 
     private static string RootOf(string targetPath)
@@ -116,11 +147,20 @@ public partial class DownloadViewModel : ViewModelBase
             Tasks.Select(t => t.Task.Id).SequenceEqual(ordered.Select(t => t.Id)))
         {
             foreach (var row in Tasks) row.RefreshState();
+            RaiseTaskHeaders();
             return;
         }
 
         Tasks.Clear();
         foreach (var t in ordered) Tasks.Add(new DownloadTaskRow(t, _downloads));
+        RaiseTaskHeaders();
+    }
+
+    private void RaiseTaskHeaders()
+    {
+        OnPropertyChanged(nameof(TasksTabHeader));
+        OnPropertyChanged(nameof(ActiveTaskCount));
+        OnPropertyChanged(nameof(HasAnyTasks));
     }
 
     [RelayCommand]
@@ -137,6 +177,7 @@ public partial class DownloadViewModel : ViewModelBase
         {
             _downloads.Enqueue(row.Course, row.Ware);
             StatusText = $"已加入下载队列：{row.Name}";
+            SelectedTab = 1;   // 排完任务直接跳到下载列表，不用用户自己找
         }
         catch (Exception ex)
         {
@@ -145,15 +186,24 @@ public partial class DownloadViewModel : ViewModelBase
         }
     }
 
-    /// <summary>整课下载：按目录顺序把所有可下载课件排进队列（多视频课件 = 多条任务）。</summary>
+    /// <summary>
+    /// 整课下载：目录没加载过就先自动加载（v1.0.45 —— 以前要求先展开目录
+    /// 再点按钮，纯属把内部实现状态甩给用户），再按目录顺序把所有可下载
+    /// 课件排进队列（多视频课件 = 多条任务）。
+    /// </summary>
     [RelayCommand]
-    private void DownloadAll(DownloadCourseRow? row)
+    private async Task DownloadAll(DownloadCourseRow? row)
     {
         if (row is null) return;
         if (row.Wares.Count == 0)
         {
-            StatusText = "目录还没加载完，稍等";
-            return;
+            StatusText = $"正在加载「{row.Title}」的课件目录…";
+            await row.EnsureCatalogAsync();
+            if (row.Wares.Count == 0)
+            {
+                StatusText = $"「{row.Title}」目录加载失败 —— 网络问题，稍后再点一次试试";
+                return;
+            }
         }
         var n = 0;
         foreach (var w in row.Wares.Where(w => w.CanDownload))
@@ -162,6 +212,7 @@ public partial class DownloadViewModel : ViewModelBase
             catch (Exception ex) { _log($"✗ {w.Name}：{ex.Message}"); }
         }
         StatusText = $"「{row.Title}」已排入 {n} 条下载任务";
+        if (n > 0) SelectedTab = 1;
     }
 
     [RelayCommand]
@@ -187,6 +238,7 @@ public sealed partial class DownloadCourseRow : ViewModelBase
 {
     private readonly Func<DownloadCourseRow, Task> _loader;
     private readonly Action<string> _log;
+    private Task? _catalogInflight;
 
     public CourseItem Course { get; }
 
@@ -213,7 +265,24 @@ public sealed partial class DownloadCourseRow : ViewModelBase
     {
         OnPropertyChanged(nameof(ExpanderLabel));
         if (!value || Wares.Count > 0 || IsLoading) return;
-        _ = _loader(this);
+        _ = EnsureCatalogAsync();
+    }
+
+    /// <summary>
+    /// 确保目录已加载（展开、全部下载共用一条通道）：正在加载就等同一次，
+    /// 加载失败则清掉句柄让下次点击能重试。
+    /// </summary>
+    public async Task EnsureCatalogAsync()
+    {
+        if (Wares.Count > 0) return;
+        if (_catalogInflight is { } inflight)
+        {
+            await inflight;
+            return;
+        }
+        _catalogInflight = _loader(this);
+        try { await _catalogInflight; }
+        finally { if (Wares.Count == 0) _catalogInflight = null; }
     }
 
     public void SetCatalog(List<CatalogNode> catalog)
