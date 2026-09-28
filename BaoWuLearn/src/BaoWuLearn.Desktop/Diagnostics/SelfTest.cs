@@ -1333,6 +1333,76 @@ public static class SelfTest
         }
         W("");
 
+        // ── 短信登录协议自检（v1.0.47）──────────────────────────
+        // 口径来自平台前端登录 chunk 的加密函数（byMobile / loginSendCaptchaCode 分支）。
+        // 两个高频坑都在这里钉死：①短信码 captchaNum **要 SM2**（与图形验证码
+        // captchaCode 的明文口径相反）；②captchaId 是发送接口的回执、必须明文原样。
+        W("─── 短信登录协议自检 ───");
+        try
+        {
+            var ok = true;
+
+            // 1) SM2 基座：自造密钥对 round-trip（平台公钥加密的内容本机解不了，
+            //    用同算法自配对证明加解密实现可用）
+            var (pub, priv) = BaoWuLearn.Core.Crypto.Sm2Crypto.GenerateKeyPair();
+            var secret = "验证码8231;工号";
+            var cipher = BaoWuLearn.Core.Crypto.Sm2Crypto.Encrypt(secret, pub);
+            var back = BaoWuLearn.Core.Crypto.Sm2Crypto.Decrypt(cipher, priv);
+            ok &= back == secret;
+            W($"  SM2 加解密 round-trip     : {(back == secret ? "通过" : $"失败（解出「{back}」）←")}");
+
+            // 2) 发送报文：三字段、两密一明、无图形验证码字段
+            var send = BaoWuLearn.Core.Services.AuthService.BuildSendSmsPayload("E12345", "13800001234");
+            ok &= send.Count == 3
+                  && (string)send["loginName"]! != "E12345"
+                  && (string)send["mobile"]! != "13800001234"
+                  && (string)send["clientType"]! == "PC"
+                  && !send.ContainsKey("captchaCode");
+            W($"  发送报文（3字段两密）      : {(send.Count == 3 && (string)send["loginName"]! != "E12345" ? "通过" : "失败 ←")}");
+
+            // SM2 是随机数填充：同明文两次密文必不同（等长不同串 = 不是裸明文）
+            var again = BaoWuLearn.Core.Services.AuthService.BuildSendSmsPayload("E12345", "13800001234");
+            ok &= (string)again["loginName"]! != (string)send["loginName"]!;
+
+            // 3) 登录报文：captchaNum 密文、captchaId 明文回执、无 type/password/captchaCode
+            var receipt = "回执-id-abc123";
+            var login = BaoWuLearn.Core.Services.AuthService.BuildMobileLoginPayload(
+                "E12345", "13800001234", "823145", receipt);
+            ok &= login.Count == 5
+                  && (string)login["captchaNum"]! != "823145"          // 短信码必须加密
+                  && (string)login["captchaId"]! == receipt            // 回执明文原样
+                  && !login.ContainsKey("type")
+                  && !login.ContainsKey("password")
+                  && !login.ContainsKey("captchaCode");
+            W($"  登录报文（码密/证透）      : {(ok ? "通过" : "失败 ←")}");
+
+            // 4) 前端同款校验口径：手机号 ^1[3-9]\d{9}$、验证码 ^\d{6}$
+            ok &= LoginViewModel.IsValidMobile("13800001234")
+                  && !LoginViewModel.IsValidMobile("12345678901")     // 12 开头不是手机号段
+                  && !LoginViewModel.IsValidMobile("1380000123")      // 10 位
+                  && LoginViewModel.IsValidSmsCode("823145")
+                  && !LoginViewModel.IsValidSmsCode("82314")
+                  && !LoginViewModel.IsValidSmsCode("82314a");
+            W($"  手机号/验证码格式口径      : {(ok ? "通过" : "失败 ←")}");
+
+            // 5) 自救判据：常规业务失败不触发探测，疑似接口变更才触发
+            ok &= !LoginViewModel.IsSuspectedApiChange("用户名或密码错误")
+                  && !LoginViewModel.IsSuspectedApiChange("验证码错误")
+                  && !LoginViewModel.IsSuspectedApiChange("请输入验证码")
+                  && LoginViewModel.IsSuspectedApiChange("账户名或手机号解密失败，请确保都已使用SM2加密")
+                  && LoginViewModel.IsSuspectedApiChange("登录接口返回空响应");
+            W($"  接口变更疑似判据          : {(ok ? "通过" : "失败 ←")}");
+
+            if (ok) pass++; else fail++;
+            W($"  结论                      : {(ok ? "PASS" : "FAIL")}（两坑钉死：captchaNum 加密、回执明文）");
+        }
+        catch (Exception ex)
+        {
+            fail++;
+            W($"  FAIL → {ex.GetType().Name}: {ex.Message}");
+        }
+        W("");
+
         // ── 会话自然日失效自检（v1.0.34）────────────────────────
         // 事故背景：2026-09-13 00:00:54，23:47:59 建立的会话被平台切断（前 60 秒的心跳还全成功）。
         // 把它与 v1.0.26 存档的跨日样本（23:37:18 登录 → 00:01:45 首次过期）对齐后发现：

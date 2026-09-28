@@ -117,7 +117,10 @@ public partial class MainWindowViewModel : ViewModelBase
         Fleet = new FleetViewModel(_hub, new FleetActions(
             OpenRuntime, StartRuntime, StopRuntime, ReloginRuntime, LogoutRuntime,
             StartAllRuntimesAsync, BeginAddAccount));
-        Login = new LoginViewModel(_auth, _accounts, OnLoginSuccess, Logs.AppendAuto);
+        // checkUpdate：登录报错疑似平台接口变更时，登录页自救探一次更新通道
+        //（接口哪天改了，至少还能靠更新通道升级到适配版，不至于既登不上又升不了）
+        Login = new LoginViewModel(_auth, _accounts, OnLoginSuccess, Logs.AppendAuto,
+            checkUpdate: () => RunUpdateCheckAsync(manual: false));
         Login.OnReturnPool = ResumePool;
         RebindPages(_cold);
 

@@ -22,6 +22,21 @@ public static class ApiEndpoints
     public const string Login = AuthBase + "/login";
 
     /// <summary>
+    /// 登录场景发送手机短信验证码（v1.0.47，2026-09-28 从前端登录 chunk 静态提取 +
+    /// 端点空报文探测确认）。报文只有三个字段：loginName/mobile 各自 SM2，clientType 明文。
+    /// ★ 不需要图形验证码；成功响应 data.captchaId 是「登录回执」，
+    ///   随后必须原样带在 <see cref="LoginByMobile"/> 的 captchaId 字段上。
+    /// </summary>
+    public const string LoginSendCaptchaCode = AuthBase + "/loginSendCaptchaCode";
+
+    /// <summary>
+    /// 手机号 + 短信验证码登录（与 <see cref="Login"/> 平级的独立端点，不是 type 分支）。
+    /// 报文：loginName/mobile/captchaNum 三者各自 SM2，captchaId 明文透传（发送接口回执）。
+    /// 成功响应与账号密码登录同封套（data.accessToken）。
+    /// </summary>
+    public const string LoginByMobile = AuthBase + "/loginByMobile";
+
+    /// <summary>
     /// token 续期（2026-09-12 从网页前端静态提取）：vben 前端定义了
     /// <c>POST /auth/refresh</c>（withCredentials，cookie 凭证），但
     /// <c>enableRefreshToken:!1</c> —— 全站零调用，是死代码；服务端路由实测存在

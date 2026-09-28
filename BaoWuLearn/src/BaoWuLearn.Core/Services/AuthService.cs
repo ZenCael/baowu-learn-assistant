@@ -6,11 +6,15 @@ using BaoWuLearn.Core.Models;
 namespace BaoWuLearn.Core.Services;
 
 /// <summary>
-/// 登录相关：图形验证码 + 账号密码登录。
+/// 登录相关：图形验证码 + 账号密码登录 + 手机号短信验证码登录。
 ///
-/// 登录字段中 <c>loginName</c> / <c>password</c> / <c>mobile</c> 做 SM2 加密，
-/// 验证码 <c>captchaCode</c> 与 <c>captchaId</c> 明文透传 —— 与网页端行为完全一致；
+/// 账号密码：字段中 <c>loginName</c> / <c>password</c> / <c>mobile</c> 做 SM2 加密，
+/// 图形验证码 <c>captchaCode</c> 与 <c>captchaId</c> 明文透传 —— 与网页端行为完全一致；
 /// 验证码不 OCR、不绕过，交由使用者肉眼识别。
+///
+/// 短信登录（v1.0.47）：先 <see cref="SendLoginSmsAsync"/> 拿登录回执，
+/// 再 <see cref="LoginByMobileAsync"/> 提交；短信码在 <c>captchaNum</c> 里、**要 SM2 加密**，
+/// 与图形验证码的明文口径相反。短信由平台官方通道发到使用者手机，同样零绕过。
 /// </summary>
 public sealed class AuthService
 {
@@ -140,32 +144,131 @@ public sealed class AuthService
 
         using (doc)
         {
+            return ReadLoginResult(doc.RootElement, userNo);
+        }
+    }
+
+    // ── 短信登录（v1.0.47）───────────────────────────────
+    //
+    // 口径来源：2026-09-28 从平台前端登录 chunk（login-B2OsDv-A.js）与
+    // 核心 chunk（page-DQR3aa7x.js）的加密函数逐字段核对，并用空报文探测确认
+    // 两个路由都在线。与账号密码登录的三处本质区别：
+    //   1) 短信登录**没有图形验证码**——发送接口只验 SM2 的 loginName+mobile；
+    //   2) 短信码字段是 captchaNum，而且**要 SM2 加密**
+    //      （图形验证码的 captchaCode 是明文，两者口径相反，别搞混）；
+    //   3) captchaId 传的不是图形验证码 ID，而是「发送短信」接口返回的登录回执，
+    //      没发送过短信（无回执）时登录必被拒 —— 前端也是同样的门禁。
+
+    /// <summary>
+    /// 构造「发送登录短信验证码」报文（纯函数，自检离线验算）。
+    /// 严格对齐前端加密函数的 loginSendCaptchaCode 分支：只有这三个字段。
+    /// </summary>
+    public static Dictionary<string, object?> BuildSendSmsPayload(string userNo, string mobile) => new()
+    {
+        ["loginName"] = Sm2Crypto.Encrypt(userNo),
+        ["mobile"] = Sm2Crypto.Encrypt(mobile),
+        ["clientType"] = "PC",
+    };
+
+    /// <summary>
+    /// 构造「手机号登录」报文（纯函数，自检离线验算）。
+    /// ★ captchaNum（短信码）要 SM2 加密；captchaId 是发送接口的回执、明文透传；
+    ///   报文里**没有** type / password / captchaCode —— 前端 byMobile 分支原样。
+    /// </summary>
+    public static Dictionary<string, object?> BuildMobileLoginPayload(
+        string userNo, string mobile, string smsCode, string captchaId) => new()
+    {
+        ["clientType"] = "PC",
+        ["loginName"] = Sm2Crypto.Encrypt(userNo),
+        ["mobile"] = Sm2Crypto.Encrypt(mobile),
+        ["captchaNum"] = Sm2Crypto.Encrypt(smsCode),
+        ["captchaId"] = captchaId,
+    };
+
+    /// <summary>
+    /// 发送登录短信验证码。成功返回登录回执 captchaId
+    /// （由调用方持有，随 <see cref="LoginByMobileAsync"/> 提交）。
+    /// </summary>
+    public async Task<string> SendLoginSmsAsync(
+        string userNo, string mobile, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userNo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(mobile);
+
+        var doc = await _api.PostRawAsync(
+            ApiEndpoints.LoginSendCaptchaCode,
+            BuildSendSmsPayload(userNo, mobile), withToken: false, ct);
+        if (doc is null) throw new ApiException("发送验证码接口返回空响应");
+
+        using (doc)
+        {
             var root = doc.RootElement;
             if (!ApiResponseReader.IsOk(root))
-                throw new ApiException(ApiResponseReader.Message(root) ?? "登录失败");
+                throw new ApiException(
+                    ApiResponseReader.Message(root) ?? "短信发送失败");
 
-            var data = ApiResponseReader.Data(root);
-            var result = new LoginResult { Raw = data?.Clone() };
-
-            var scope = data ?? root;
-            // 平台在根节点也会给 jwt 字段，一并纳入候选
-            result.AccessToken = FindString(scope, "accessToken", "token", "access_token", "jwt")
-                                 ?? FindString(root, "accessToken", "token", "access_token", "jwt");
-            result.UserName = FindString(scope, "userName", "nickName", "realName", "name");
-            result.RealName = FindString(scope, "realName", "nickName", "name") ?? result.UserName;
-
-            // 工号必须来自明确字段；平台返回的 userName 是「张三」这类显示名，
-            // 不能拿它冒充工号 —— 取不到就回退到用户本次输入的工号。
-            result.UserNo = FindString(scope, "userNo", "loginName", "empNo", "employeeNo", "empCode")
-                            ?? userNo;
-
-            if (string.IsNullOrEmpty(result.AccessToken))
-                throw new ApiException("登录成功但未取到 accessToken");
-
-            _api.Token = result.AccessToken;
-            _api.ResetTokenLatch();   // 新令牌到手，解除上一轮的过期闭锁
-            return result;
+            var receipt = FindString(ApiResponseReader.Data(root) ?? root, "captchaId");
+            if (string.IsNullOrEmpty(receipt))
+                throw new ApiException("短信已发出但接口未返回登录回执（captchaId）");
+            return receipt;
         }
+    }
+
+    /// <summary>手机号 + 短信验证码登录。成功后的令牌处理与账号密码登录完全同路。</summary>
+    public async Task<LoginResult> LoginByMobileAsync(
+        string userNo,
+        string mobile,
+        string smsCode,
+        string captchaId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userNo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(mobile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(smsCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(captchaId);
+
+        var doc = await _api.PostRawAsync(
+            ApiEndpoints.LoginByMobile,
+            BuildMobileLoginPayload(userNo, mobile, smsCode, captchaId),
+            withToken: false, ct);
+        if (doc is null) throw new ApiException("登录接口返回空响应");
+
+        using (doc)
+        {
+            return ReadLoginResult(doc.RootElement, userNo);
+        }
+    }
+
+    /// <summary>
+    /// 登录响应 → LoginResult + 令牌落位（账号密码 / 短信两条通道共用，
+    /// 平台对两者给同一封套）。工号取不到时回退到用户本次输入。
+    /// </summary>
+    private LoginResult ReadLoginResult(JsonElement root, string fallbackUserNo)
+    {
+        if (!ApiResponseReader.IsOk(root))
+            throw new ApiException(ApiResponseReader.Message(root) ?? "登录失败");
+
+        var data = ApiResponseReader.Data(root);
+        var result = new LoginResult { Raw = data?.Clone() };
+
+        var scope = data ?? root;
+        // 平台在根节点也会给 jwt 字段，一并纳入候选
+        result.AccessToken = FindString(scope, "accessToken", "token", "access_token", "jwt")
+                             ?? FindString(root, "accessToken", "token", "access_token", "jwt");
+        result.UserName = FindString(scope, "userName", "nickName", "realName", "name");
+        result.RealName = FindString(scope, "realName", "nickName", "name") ?? result.UserName;
+
+        // 工号必须来自明确字段；平台返回的 userName 是「张三」这类显示名，
+        // 不能拿它冒充工号 —— 取不到就回退到用户本次输入的工号。
+        result.UserNo = FindString(scope, "userNo", "loginName", "empNo", "employeeNo", "empCode")
+                        ?? fallbackUserNo;
+
+        if (string.IsNullOrEmpty(result.AccessToken))
+            throw new ApiException("登录成功但未取到 accessToken");
+
+        _api.Token = result.AccessToken;
+        _api.ResetTokenLatch();   // 新令牌到手，解除上一轮的过期闭锁
+        return result;
     }
 
     /// <summary>

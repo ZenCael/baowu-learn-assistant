@@ -19,6 +19,21 @@
                      Classes="faint" FontSize="12" />
         </StackPanel>
 
+        <!-- 登录渠道页签（与网页端登录页同款两 tab）：
+             选中态用 primary 类表达，Command 传目标模式（字符串参数） -->
+        <UniformGrid Columns="2" Margin="0,0,0,4">
+          <Button Content="账号密码" Padding="0,8" FontSize="13" Margin="0,0,4,0"
+                  Classes.primary="{Binding IsPasswordMode}"
+                  Classes.bare="{Binding IsSmsLogin}"
+                  IsEnabled="{Binding !IsBusy}"
+                  Command="{Binding SwitchModeCommand}" CommandParameter="false" />
+          <Button Content="手机短信" Padding="0,8" FontSize="13" Margin="4,0,0,0"
+                  Classes.primary="{Binding IsSmsLogin}"
+                  Classes.bare="{Binding IsPasswordMode}"
+                  IsEnabled="{Binding !IsBusy}"
+                  Command="{Binding SwitchModeCommand}" CommandParameter="true" />
+        </UniformGrid>
+
         <StackPanel Spacing="6">
           <TextBlock Text="员工号" Classes="label" />
           <Grid ColumnDefinitions="*,Auto">
@@ -86,7 +101,7 @@
           </Grid>
         </StackPanel>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="6" IsVisible="{Binding IsPasswordMode}">
           <TextBlock Text="密码" Classes="label" />
           <Grid ColumnDefinitions="*,Auto">
             <TextBox Grid.Column="0"
@@ -103,7 +118,7 @@
           </Grid>
         </StackPanel>
 
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="6" IsVisible="{Binding IsPasswordMode}">
           <TextBlock Text="验证码" Classes="label" />
           <Grid ColumnDefinitions="*,Auto">
             <TextBox Grid.Column="0"
@@ -147,6 +162,33 @@
                      IsVisible="{Binding CaptchaIsAnimated}" />
         </StackPanel>
 
+        <!-- 短信登录表单（v1.0.47）：手机号 → 发送验证码（60s 重发倒计时）→ 提交 -->
+        <StackPanel Spacing="6" IsVisible="{Binding IsSmsLogin}">
+          <TextBlock Text="手机号" Classes="label" />
+          <TextBox Text="{Binding Mobile}"
+                   Watermark="登录短信发到此手机号"
+                   MaxLength="11"
+                   IsEnabled="{Binding !IsBusy}" />
+        </StackPanel>
+        <StackPanel Spacing="6" IsVisible="{Binding IsSmsLogin}">
+          <TextBlock Text="短信验证码" Classes="label" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     Text="{Binding SmsCode}"
+                     Watermark="6 位短信验证码"
+                     MaxLength="6"
+                     IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Column="1" Margin="8,0,0,0"
+                    Content="{Binding SmsButtonText}"
+                    MinWidth="108"
+                    Padding="10,6" FontSize="12"
+                    IsEnabled="{Binding !SmsSending}"
+                    Command="{Binding SendSmsCommand}" />
+          </Grid>
+          <TextBlock Text="验证码由平台官方通道发送到本机手机；先发送、收到后输入再登录"
+                     Classes="faint" FontSize="11" />
+        </StackPanel>
+
         <StackPanel Spacing="6">
           <StackPanel Orientation="Horizontal" Spacing="18">
             <CheckBox Content="记住账户"
@@ -156,6 +198,7 @@
             <CheckBox Content="保存密码"
                       IsChecked="{Binding SavePassword}"
                       IsEnabled="{Binding !IsBusy}"
+                      IsVisible="{Binding IsPasswordMode}"
                       ToolTip.Tip="把密码加密保存在本机，下次选中该账号自动填入" />
           </StackPanel>
           <TextBlock Text="密码用本机密钥加密后保存，不存明文；关闭「保存密码」会立即清除已保存的密码。"
@@ -180,7 +223,16 @@
                 HorizontalAlignment="Stretch"
                 Padding="0,10"
                 Margin="0,4,0,0"
+                IsVisible="{Binding IsPasswordMode}"
                 Command="{Binding LoginCommand}"
+                IsEnabled="{Binding !IsBusy}" />
+        <Button Classes="primary"
+                Content="{Binding LoginButtonText}"
+                HorizontalAlignment="Stretch"
+                Padding="0,10"
+                Margin="0,4,0,0"
+                IsVisible="{Binding IsSmsLogin}"
+                Command="{Binding LoginSmsCommand}"
                 IsEnabled="{Binding !IsBusy}" />
 
         <TextBlock Text="{Binding StatusText}"

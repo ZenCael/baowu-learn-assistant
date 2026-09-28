@@ -59,10 +59,13 @@ public partial class MainWindowViewModel
         _updateTimer.Tick += async (_, _) => await RunUpdateCheckAsync(manual: false);
         _updateTimer.Start();
 
-        // 启动首查延后 25 秒：避开验证码抓取与皮肤应用，慢网也不至于拖启动。
+        // 启动首查只留 6 秒缓冲（够皮肤与验证码抓取先行）——更新通道是平台的
+        // 自救通道：登录接口哪天变了，客户端全靠这里升级到适配版。
+        // 它排在登录页渲染之后、但不以任何登录态为前提：未登录、登录失败、
+        // 甚至登录页停留期间，检查与横幅照常工作（横幅挂 DockPanel 顶层）。
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(25));
+            await Task.Delay(TimeSpan.FromSeconds(6));
             await RunUpdateCheckAsync(manual: false);
         });
     }

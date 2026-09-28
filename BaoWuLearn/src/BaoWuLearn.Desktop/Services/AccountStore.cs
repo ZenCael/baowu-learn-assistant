@@ -19,6 +19,12 @@ public sealed class SavedAccount
 
     /// <summary>最近一次登录时间（用于把常用账号排前面）。</summary>
     public string? LastLoginAt { get; set; }
+
+    /// <summary>
+    /// 上次登录用过的手机号（短信登录渠道回显用；老存档没有此字段，读入为 null 即空）。
+    /// 只存本机存档文件 —— 密码都存这里，手机号不算新增暴露面。
+    /// </summary>
+    public string? Mobile { get; set; }
 }
 
 /// <summary>
@@ -132,8 +138,10 @@ public sealed class AccountStore
     /// <summary>
     /// 登录成功后记录这个账号。
     /// <paramref name="password"/> 为 null 或未开启"保存密码"时不写密码。
+    /// <paramref name="mobile"/>（短信登录渠道的手机号）给了才覆盖，不给保留原值 ——
+    /// 密码登录不会把之前记的手机号抹掉。
     /// </summary>
-    public void Upsert(string userNo, string? displayName, string? password)
+    public void Upsert(string userNo, string? displayName, string? password, string? mobile = null)
     {
         if (string.IsNullOrWhiteSpace(userNo)) return;
 
@@ -147,6 +155,7 @@ public sealed class AccountStore
             }
 
             if (!string.IsNullOrWhiteSpace(displayName)) acc.DisplayName = displayName;
+            if (!string.IsNullOrWhiteSpace(mobile)) acc.Mobile = mobile;
             acc.LastLoginAt = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
             if (SavePassword && !string.IsNullOrEmpty(password))
